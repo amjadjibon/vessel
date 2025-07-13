@@ -1,50 +1,52 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import ContainerList from "./components/ContainerList";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const [activeTab, setActiveTab] = useState<'containers' | 'images' | 'volumes'>('containers');
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <header className="app-header">
+        <h1>🚢 Vessel - Docker Desktop Clone</h1>
+        <nav className="app-nav">
+          <button 
+            className={`nav-button ${activeTab === 'containers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('containers')}
+          >
+            📦 Containers
+          </button>
+          <button 
+            className={`nav-button ${activeTab === 'images' ? 'active' : ''}`}
+            onClick={() => setActiveTab('images')}
+          >
+            💿 Images
+          </button>
+          <button 
+            className={`nav-button ${activeTab === 'volumes' ? 'active' : ''}`}
+            onClick={() => setActiveTab('volumes')}
+          >
+            💾 Volumes
+          </button>
+        </nav>
+      </header>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      <main className="app-main">
+        {activeTab === 'containers' && <ContainerList />}
+        {activeTab === 'images' && (
+          <div className="placeholder">
+            <h2>Images</h2>
+            <p>Image management coming soon...</p>
+          </div>
+        )}
+        {activeTab === 'volumes' && (
+          <div className="placeholder">
+            <h2>Volumes</h2>
+            <p>Volume management coming soon...</p>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
 
