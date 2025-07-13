@@ -9,7 +9,7 @@ use std::process::Stdio;
 use tokio::process::Command as TokioCommand;
 use sysinfo::System;
 // use tokio::time::{timeout, Duration};
-// use futures_util::StreamExt;
+use futures_util::StreamExt;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -53,6 +53,7 @@ pub struct VolumeInfo {
     pub labels: HashMap<String, String>,
     pub options: HashMap<String, String>,
     pub scope: String,
+    pub size: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -363,18 +364,27 @@ async fn list_volumes() -> Result<Vec<VolumeInfo>, String> {
         .await
         .map_err(|e| format!("Failed to list volumes: {}", e))?;
 
+    // Get all volume sizes using Docker system df
+    let volume_sizes = get_all_volume_sizes().await.unwrap_or_default();
+
     let volume_info: Vec<VolumeInfo> = volumes_response
         .volumes
         .unwrap_or_default()
         .into_iter()
-        .map(|volume| VolumeInfo {
-            name: volume.name,
-            driver: volume.driver,
-            mountpoint: volume.mountpoint,
-            created_at: volume.created_at,
-            labels: volume.labels,
-            options: volume.options,
-            scope: volume.scope.map(|s| s.to_string()).unwrap_or_else(|| "local".to_string()),
+        .map(|volume| {
+            // Get size from Docker system df results
+            let size = volume_sizes.get(&volume.name).copied().unwrap_or(0);
+            
+            VolumeInfo {
+                name: volume.name,
+                driver: volume.driver,
+                mountpoint: volume.mountpoint,
+                created_at: volume.created_at,
+                labels: volume.labels,
+                options: volume.options,
+                scope: volume.scope.map(|s| s.to_string()).unwrap_or_else(|| "local".to_string()),
+                size,
+            }
         })
         .collect();
 
@@ -392,6 +402,97 @@ async fn remove_volume(volume_name: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to remove volume: {}", e))?;
 
     Ok(format!("Volume {} removed successfully", volume_name))
+}
+
+#[tauri::command]
+async fn get_volume_size(volume_name: String) -> Result<u64, String> {
+    // Get all volume sizes using Docker system df
+    let volume_sizes = get_all_volume_sizes().await?;
+    
+    // Return the size for the specific volume
+    Ok(volume_sizes.get(&volume_name).copied().unwrap_or(0))
+}
+
+async fn get_all_volume_sizes() -> Result<HashMap<String, u64>, String> {
+    // Use Docker's system df -v command to get accurate volume sizes
+    let mut cmd = TokioCommand::new("docker");
+    cmd.args(&["system", "df", "-v"]);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let output = cmd.output().await
+        .map_err(|e| format!("Failed to execute docker system df: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Docker system df failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut volume_sizes = HashMap::new();
+    let mut in_volumes_section = false;
+
+    // Parse the output line by line
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        
+        // Look for the volumes section header
+        if trimmed.starts_with("VOLUME NAME") {
+            in_volumes_section = true;
+            continue;
+        }
+        
+        // Skip empty lines or if not in volumes section
+        if !in_volumes_section || trimmed.is_empty() {
+            continue;
+        }
+        
+        // Stop if we hit another section
+        if trimmed.starts_with("Build Cache") || trimmed.starts_with("REPOSITORY") {
+            break;
+        }
+        
+        // Parse volume line: VOLUME_NAME   LINKS   SIZE
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let volume_name = parts[0];
+            let size_str = parts[2]; // SIZE is the third column
+            
+            // Parse size string (e.g., "1.5GB", "256MB", "0B")
+            if let Ok(size_bytes) = parse_docker_size(size_str) {
+                volume_sizes.insert(volume_name.to_string(), size_bytes);
+            }
+        }
+    }
+
+    Ok(volume_sizes)
+}
+
+fn parse_docker_size(size_str: &str) -> Result<u64, String> {
+    if size_str == "0B" || size_str == "0" {
+        return Ok(0);
+    }
+
+    let size_str = size_str.trim();
+    let (number_part, unit_part) = if let Some(pos) = size_str.find(|c: char| c.is_alphabetic()) {
+        (&size_str[..pos], &size_str[pos..])
+    } else {
+        (size_str, "B")
+    };
+
+    let number: f64 = number_part.parse()
+        .map_err(|_| format!("Invalid number in size: {}", size_str))?;
+
+    let multiplier = match unit_part.to_uppercase().as_str() {
+        "B" => 1,
+        "KB" => 1024,
+        "MB" => 1024 * 1024,
+        "GB" => 1024 * 1024 * 1024,
+        "TB" => 1024_u64.pow(4),
+        _ => return Err(format!("Unknown size unit: {}", unit_part)),
+    };
+
+    Ok((number * multiplier as f64) as u64)
 }
 
 #[tauri::command]
@@ -587,7 +688,7 @@ async fn get_system_stats() -> Result<SystemStats, String> {
     let memory_used = sys.used_memory();
     let memory_total = sys.total_memory();
     
-    // Simplified disk usage - use placeholder values for now
+    // Use placeholder disk values for now - sysinfo disk API has changed
     let disk_used: u64 = 50 * 1024 * 1024 * 1024; // 50GB used as placeholder
     let disk_total: u64 = 1000 * 1024 * 1024 * 1024; // 1TB total as placeholder
     
@@ -711,20 +812,108 @@ async fn unpause_container(container_id: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn get_container_stats(container_id: String) -> Result<ContainerStats, String> {
-    // For now, return mock data to get the app working
-    // Real implementation would use Docker stats API
-    Ok(ContainerStats {
-        id: container_id.clone(),
-        name: format!("container-{}", &container_id[..8]),
-        cpu_percentage: 2.5, // Mock CPU usage
-        memory_usage: 256 * 1024 * 1024, // 256MB
-        memory_limit: 1024 * 1024 * 1024, // 1GB
-        memory_percentage: 25.0,
-        network_rx: 1024 * 1024, // 1MB
-        network_tx: 512 * 1024,  // 512KB
-        block_read: 2 * 1024 * 1024, // 2MB
-        block_write: 1024 * 1024,    // 1MB
-    })
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    // Get container info first to get the name
+    let containers = docker
+        .list_containers(Some(ListContainersOptions::<String> {
+            all: true,
+            filters: {
+                let mut filters = HashMap::new();
+                filters.insert("id".to_string(), vec![container_id.clone()]);
+                filters
+            },
+            ..Default::default()
+        }))
+        .await
+        .map_err(|e| format!("Failed to get container info: {}", e))?;
+
+    let container_name = containers
+        .first()
+        .and_then(|c| c.names.as_ref())
+        .and_then(|names| names.first())
+        .map(|name| name.trim_start_matches('/').to_string())
+        .unwrap_or_else(|| format!("container-{}", &container_id[..8]));
+
+    // Get real-time stats from Docker
+    let mut stats_stream = docker.stats(&container_id, Some(bollard::container::StatsOptions {
+        stream: false,
+        one_shot: true,
+    }));
+    
+    if let Some(Ok(stats)) = stats_stream.next().await {
+        // Calculate CPU percentage - simplified approach
+        let cpu_stats = &stats.cpu_stats;
+        let precpu_stats = &stats.precpu_stats;
+        
+        let cpu_delta = cpu_stats.cpu_usage.total_usage.saturating_sub(precpu_stats.cpu_usage.total_usage);
+        let system_delta = cpu_stats.system_cpu_usage.unwrap_or(0).saturating_sub(precpu_stats.system_cpu_usage.unwrap_or(0));
+        let online_cpus = cpu_stats.online_cpus.unwrap_or(1) as f64;
+        
+        let cpu_percentage = if system_delta > 0 && cpu_delta > 0 {
+            (cpu_delta as f64 / system_delta as f64) * online_cpus * 100.0
+        } else {
+            0.0
+        };
+
+        // Memory stats
+        let memory_usage = stats.memory_stats.usage.unwrap_or(0);
+        let memory_limit = stats.memory_stats.limit.unwrap_or(0);
+        let memory_percentage = if memory_limit > 0 {
+            (memory_usage as f64 / memory_limit as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Network stats
+        let (network_rx, network_tx) = if let Some(networks) = &stats.networks {
+            let mut rx_bytes = 0u64;
+            let mut tx_bytes = 0u64;
+            
+            for (_, network) in networks {
+                rx_bytes += network.rx_bytes;
+                tx_bytes += network.tx_bytes;
+            }
+            
+            (rx_bytes, tx_bytes)
+        } else {
+            (0, 0)
+        };
+
+        // Block I/O stats
+        let (block_read, block_write) = if let Some(io_service_bytes_recursive) = &stats.blkio_stats.io_service_bytes_recursive {
+            let mut read_bytes = 0u64;
+            let mut write_bytes = 0u64;
+            
+            for io_stat in io_service_bytes_recursive {
+                match io_stat.op.as_str() {
+                    "read" | "Read" => read_bytes += io_stat.value,
+                    "write" | "Write" => write_bytes += io_stat.value,
+                    _ => {}
+                }
+            }
+            
+            (read_bytes, write_bytes)
+        } else {
+            (0, 0)
+        };
+
+        Ok(ContainerStats {
+            id: container_id,
+            name: container_name,
+            cpu_percentage,
+            memory_usage,
+            memory_limit,
+            memory_percentage,
+            network_rx,
+            network_tx,
+            block_read,
+            block_write,
+        })
+    } else {
+        Err("Failed to get container stats".to_string())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -735,7 +924,7 @@ pub fn run() {
             greet, 
             list_containers, start_container, stop_container, restart_container, remove_container, pause_container, unpause_container,
             list_images, remove_image, force_remove_image,
-            list_volumes, remove_volume,
+            list_volumes, remove_volume, get_volume_size,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
             get_system_stats, get_docker_system_info, get_container_stats

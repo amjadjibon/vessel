@@ -36,6 +36,7 @@ export interface VolumeInfo {
   labels: Record<string, string>;
   options: Record<string, string>;
   scope: string;
+  size: number;
 }
 
 export interface NetworkInfo {

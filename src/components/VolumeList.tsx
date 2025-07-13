@@ -59,11 +59,12 @@ const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelec
     return `${Math.floor(diffDays / 365)} year${Math.floor(diffDays / 365) > 1 ? 's' : ''} ago`;
   };
 
-  const formatSize = (mountpoint: string) => {
-    // For now, return mock size data - in real implementation, you'd get actual volume size
-    const mockSizes = ['45.4 MB', '0 Bytes', '46.1 MB', '38.2 MB', '1.9 GB', '56 Bytes'];
-    const hash = mountpoint.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-    return mockSizes[hash % mockSizes.length];
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   const getColumnValue = (columnId: string) => {
@@ -73,7 +74,7 @@ const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelec
       case 'created':
         return formatCreated(volume.created_at);
       case 'size':
-        return formatSize(volume.mountpoint);
+        return formatSize(volume.size);
       case 'driver':
         return volume.driver;
       case 'scope':
