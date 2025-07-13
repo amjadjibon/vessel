@@ -611,6 +611,124 @@ body {
   flex-direction: column;
 }
 
+/* Terminal Tabs */
+.terminal-tabs {
+  margin-bottom: 16px;
+}
+
+.tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: #f8f9fa;
+  border-radius: 6px 6px 0 0;
+  padding: 4px;
+  border: 1px solid #e0e0e0;
+  border-bottom: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  color: #6c757d;
+  min-width: 120px;
+  position: relative;
+}
+
+.terminal-tab:hover {
+  background-color: #f8f9fa;
+  color: #495057;
+}
+
+.terminal-tab.active {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border-color: #333333;
+  border-bottom-color: #1a1a1a;
+  z-index: 2;
+}
+
+.tab-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.tab-rename-input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid #4A90E2;
+  border-radius: 2px;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 2px 4px;
+  outline: none;
+  min-width: 80px;
+}
+
+.terminal-tab.active .tab-rename-input {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+  opacity: 0.7;
+}
+
+.tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
+.terminal-tab.active .tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.new-tab-button {
+  background: none;
+  border: 1px solid #e0e0e0;
+  color: #6c757d;
+  cursor: pointer;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  margin-left: 4px;
+}
+
+.new-tab-button:hover {
+  background-color: #f8f9fa;
+  color: #495057;
+  border-color: #bdbdbd;
+}
+
 .terminal-page-header {
   margin-bottom: 16px;
 }

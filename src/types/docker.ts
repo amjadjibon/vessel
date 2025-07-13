@@ -94,6 +94,16 @@ export interface TerminalEntry {
   isExecuting?: boolean;
 }
 
+export interface TerminalSession {
+  id: string;
+  name: string;
+  currentDirectory: string;
+  entries: TerminalEntry[];
+  commandHistory: string[];
+  historyIndex: number;
+  isActive: boolean;
+}
+
 export interface SystemStats {
   cpu_usage: number;
   memory_used: number;

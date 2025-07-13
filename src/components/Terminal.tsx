@@ -1,44 +1,139 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { TerminalOutput, TerminalEntry } from '../types/docker';
+import { TerminalOutput, TerminalEntry, TerminalSession } from '../types/docker';
 
 const Terminal: React.FC = () => {
-  const [entries, setEntries] = useState<TerminalEntry[]>([]);
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [currentCommand, setCurrentCommand] = useState('');
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [currentDirectory, setCurrentDirectory] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editingTabName, setEditingTabName] = useState('');
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadCurrentDirectory();
-    // Focus input on mount
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    initializeTerminal();
   }, []);
 
   useEffect(() => {
-    // Auto-scroll to bottom when new entries are added
+    // Auto-scroll to bottom when new entries are added in active session
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [entries]);
+  }, [sessions, activeSessionId]);
 
-  const loadCurrentDirectory = async () => {
-    try {
-      const dir = await invoke<string>('get_current_directory');
-      setCurrentDirectory(dir);
-    } catch (error) {
-      console.error('Failed to get current directory:', error);
-      setCurrentDirectory('/');
+  useEffect(() => {
+    // Focus input when active session changes
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
+  }, [activeSessionId]);
+
+  const initializeTerminal = async () => {
+    try {
+      const homeDir = await invoke<string>('get_home_directory');
+      const initialSession = createNewSession(homeDir);
+      setSessions([initialSession]);
+      setActiveSessionId(initialSession.id);
+    } catch (error) {
+      console.error('Failed to get home directory:', error);
+      const fallbackSession = createNewSession('/');
+      setSessions([fallbackSession]);
+      setActiveSessionId(fallbackSession.id);
+    }
+  };
+
+  const createNewSession = (directory?: string): TerminalSession => {
+    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const currentCount = sessions.length + 1; // +1 because we're adding a new one
+    const sessionName = `Terminal ${currentCount}`;
+    
+    return {
+      id: sessionId,
+      name: sessionName,
+      currentDirectory: directory || '/',
+      entries: [],
+      commandHistory: [],
+      historyIndex: -1,
+      isActive: true,
+    };
+  };
+
+  const renumberSessions = (sessionList: TerminalSession[]): TerminalSession[] => {
+    return sessionList.map((session, index) => ({
+      ...session,
+      name: session.name.startsWith('Terminal ') ? `Terminal ${index + 1}` : session.name
+    }));
+  };
+
+  const addNewSession = async () => {
+    try {
+      const homeDir = await invoke<string>('get_home_directory');
+      const newSession = createNewSession(homeDir);
+      setSessions(prev => {
+        const updated = [...prev, newSession];
+        return renumberSessions(updated);
+      });
+      setActiveSessionId(newSession.id);
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+    }
+  };
+
+  const closeSession = (sessionId: string) => {
+    setSessions(prev => {
+      // Cannot close the last terminal
+      if (prev.length <= 1) {
+        return prev;
+      }
+
+      const sessionIndex = prev.findIndex(s => s.id === sessionId);
+      const filtered = prev.filter(s => s.id !== sessionId);
+      const renumbered = renumberSessions(filtered);
+      
+      // If we're closing the active session, switch to the previous one or the first one
+      if (sessionId === activeSessionId) {
+        const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0;
+        const newActiveSession = renumbered[targetIndex];
+        setActiveSessionId(newActiveSession.id);
+      }
+      
+      return renumbered;
+    });
+  };
+
+  const getActiveSession = (): TerminalSession | undefined => {
+    return sessions.find(s => s.id === activeSessionId);
+  };
+
+  const startRenameTab = (sessionId: string, currentName: string) => {
+    setEditingTabId(sessionId);
+    setEditingTabName(currentName);
+  };
+
+  const finishRenameTab = () => {
+    if (editingTabId && editingTabName.trim()) {
+      setSessions(prev => prev.map(session => 
+        session.id === editingTabId 
+          ? { ...session, name: editingTabName.trim() }
+          : session
+      ));
+    }
+    setEditingTabId(null);
+    setEditingTabName('');
+  };
+
+  const cancelRenameTab = () => {
+    setEditingTabId(null);
+    setEditingTabName('');
   };
 
   const executeCommand = async (command: string) => {
     if (!command.trim()) return;
+
+    const activeSession = getActiveSession();
+    if (!activeSession) return;
 
     const entryId = Date.now().toString();
     const newEntry: TerminalEntry = {
@@ -49,15 +144,19 @@ const Terminal: React.FC = () => {
       isExecuting: true,
     };
 
-    setEntries(prev => [...prev, newEntry]);
-    setIsExecuting(true);
+    // Update the active session with the new entry
+    setSessions(prev => prev.map(session => 
+      session.id === activeSessionId 
+        ? {
+            ...session,
+            entries: [...session.entries, newEntry],
+            commandHistory: [...session.commandHistory, command].slice(-100),
+            historyIndex: -1,
+          }
+        : session
+    ));
 
-    // Add to command history
-    setCommandHistory(prev => {
-      const newHistory = [...prev, command];
-      return newHistory.slice(-100); // Keep last 100 commands
-    });
-    setHistoryIndex(-1);
+    setIsExecuting(true);
 
     try {
       let output: TerminalOutput;
@@ -73,7 +172,14 @@ const Terminal: React.FC = () => {
             success: true,
             exit_code: 0,
           };
-          await loadCurrentDirectory(); // Update current directory
+          
+          // Update current directory in the active session
+          const newDir = await invoke<string>('get_current_directory');
+          setSessions(prev => prev.map(session => 
+            session.id === activeSessionId 
+              ? { ...session, currentDirectory: newDir }
+              : session
+          ));
         } else {
           output = {
             stdout: '',
@@ -83,15 +189,18 @@ const Terminal: React.FC = () => {
           };
         }
       } else if (command === 'pwd') {
-        const dir = await invoke<string>('get_current_directory');
         output = {
-          stdout: dir,
+          stdout: activeSession.currentDirectory,
           stderr: '',
           success: true,
           exit_code: 0,
         };
       } else if (command === 'clear') {
-        setEntries([]);
+        setSessions(prev => prev.map(session => 
+          session.id === activeSessionId 
+            ? { ...session, entries: [] }
+            : session
+        ));
         setIsExecuting(false);
         return;
       } else if (command.startsWith('docker ')) {
@@ -104,13 +213,18 @@ const Terminal: React.FC = () => {
       }
 
       // Update the entry with the output
-      setEntries(prev =>
-        prev.map(entry =>
-          entry.id === entryId
-            ? { ...entry, output, isExecuting: false }
-            : entry
-        )
-      );
+      setSessions(prev => prev.map(session => 
+        session.id === activeSessionId 
+          ? {
+              ...session,
+              entries: session.entries.map(entry =>
+                entry.id === entryId
+                  ? { ...entry, output, isExecuting: false }
+                  : entry
+              )
+            }
+          : session
+      ));
     } catch (error) {
       const errorOutput: TerminalOutput = {
         stdout: '',
@@ -119,19 +233,27 @@ const Terminal: React.FC = () => {
         exit_code: 1,
       };
 
-      setEntries(prev =>
-        prev.map(entry =>
-          entry.id === entryId
-            ? { ...entry, output: errorOutput, isExecuting: false }
-            : entry
-        )
-      );
+      setSessions(prev => prev.map(session => 
+        session.id === activeSessionId 
+          ? {
+              ...session,
+              entries: session.entries.map(entry =>
+                entry.id === entryId
+                  ? { ...entry, output: errorOutput, isExecuting: false }
+                  : entry
+              )
+            }
+          : session
+      ));
     } finally {
       setIsExecuting(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const activeSession = getActiveSession();
+    if (!activeSession) return;
+
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!isExecuting && currentCommand.trim()) {
@@ -140,23 +262,36 @@ const Terminal: React.FC = () => {
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (commandHistory.length > 0) {
-        const newIndex = historyIndex === -1 
-          ? commandHistory.length - 1 
-          : Math.max(0, historyIndex - 1);
-        setHistoryIndex(newIndex);
-        setCurrentCommand(commandHistory[newIndex]);
+      if (activeSession.commandHistory.length > 0) {
+        const newIndex = activeSession.historyIndex === -1 
+          ? activeSession.commandHistory.length - 1 
+          : Math.max(0, activeSession.historyIndex - 1);
+        
+        setSessions(prev => prev.map(session => 
+          session.id === activeSessionId 
+            ? { ...session, historyIndex: newIndex }
+            : session
+        ));
+        setCurrentCommand(activeSession.commandHistory[newIndex]);
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (historyIndex !== -1) {
-        const newIndex = historyIndex + 1;
-        if (newIndex >= commandHistory.length) {
-          setHistoryIndex(-1);
+      if (activeSession.historyIndex !== -1) {
+        const newIndex = activeSession.historyIndex + 1;
+        if (newIndex >= activeSession.commandHistory.length) {
+          setSessions(prev => prev.map(session => 
+            session.id === activeSessionId 
+              ? { ...session, historyIndex: -1 }
+              : session
+          ));
           setCurrentCommand('');
         } else {
-          setHistoryIndex(newIndex);
-          setCurrentCommand(commandHistory[newIndex]);
+          setSessions(prev => prev.map(session => 
+            session.id === activeSessionId 
+              ? { ...session, historyIndex: newIndex }
+              : session
+          ));
+          setCurrentCommand(activeSession.commandHistory[newIndex]);
         }
       }
     } else if (e.key === 'Tab') {
@@ -185,8 +320,8 @@ const Terminal: React.FC = () => {
     }
   };
 
-  const getPrompt = () => {
-    const shortDir = currentDirectory.split('/').pop() || currentDirectory;
+  const getPrompt = (directory: string) => {
+    const shortDir = directory.split('/').pop() || directory;
     return `vessel@local:${shortDir}$`;
   };
 
@@ -194,24 +329,93 @@ const Terminal: React.FC = () => {
     return timestamp.toLocaleTimeString();
   };
 
+  const activeSession = getActiveSession();
+
   return (
     <div className="terminal-page">
       {/* Page Header */}
       <div className="terminal-page-header">
         <h2>Terminal</h2>
-        <p className="page-subtitle">Run Docker commands and system operations directly.</p>
+        <p className="page-subtitle">Interactive command-line interface with multiple tabs.</p>
+        
+        {/* Terminal Tabs */}
+        <div className="terminal-tabs">
+          <div className="tab-list">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={`terminal-tab ${session.id === activeSessionId ? 'active' : ''}`}
+                onClick={() => !editingTabId && setActiveSessionId(session.id)}
+              >
+                {editingTabId === session.id ? (
+                  <input
+                    type="text"
+                    value={editingTabName}
+                    onChange={(e) => setEditingTabName(e.target.value)}
+                    onBlur={finishRenameTab}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        finishRenameTab();
+                      } else if (e.key === 'Escape') {
+                        cancelRenameTab();
+                      }
+                    }}
+                    className="tab-rename-input"
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span 
+                    className="tab-name"
+                    onDoubleClick={() => startRenameTab(session.id, session.name)}
+                    title="Double-click to rename"
+                  >
+                    {session.name}
+                  </span>
+                )}
+                {sessions.length > 1 && (
+                  <button
+                    className="tab-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeSession(session.id);
+                    }}
+                    title="Close tab"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button 
+              className="new-tab-button"
+              onClick={addNewSession}
+              title="New terminal tab"
+            >
+              +
+            </button>
+          </div>
+        </div>
         
         {/* Terminal Controls */}
         <div className="terminal-controls-section">
           <div className="terminal-stats">
             <span className="terminal-status">
               <span className="status-dot running"></span>
-              Shell: bash ({currentDirectory})
+              Shell: bash ({activeSession?.currentDirectory || '/'})
             </span>
           </div>
           <div className="terminal-actions">
             <button 
-              onClick={() => setEntries([])} 
+              onClick={() => {
+                if (activeSession) {
+                  setSessions(prev => prev.map(session => 
+                    session.id === activeSessionId 
+                      ? { ...session, entries: [] }
+                      : session
+                  ));
+                }
+              }} 
               className="clear-button"
               title="Clear terminal"
             >
@@ -233,46 +437,48 @@ const Terminal: React.FC = () => {
       {/* Terminal Container */}
       <div className="terminal-container" onClick={handleTerminalClick}>
         <div className="terminal-content" ref={terminalRef}>
-          <div className="terminal-welcome">
-            <p className="welcome-title">🖥️ Vessel Terminal</p>
-            <p>Interactive terminal with Docker command support</p>
-            <p>Type commands below. Use arrow keys for history navigation.</p>
-            <p>Current directory: <code>{currentDirectory}</code></p>
-          </div>
-
-        {entries.map((entry) => (
-          <div key={entry.id} className="terminal-entry">
-            <div className="terminal-command">
-              <span className="terminal-prompt">{getPrompt()}</span>
-              <span className="terminal-input">{entry.command}</span>
-              <span className="terminal-timestamp">{formatTimestamp(entry.timestamp)}</span>
+          {activeSession && activeSession.entries.length === 0 && (
+            <div className="terminal-welcome">
+              <p className="welcome-title">🖥️ Vessel Terminal</p>
+              <p>Interactive terminal with Docker command support</p>
+              <p>Type commands below. Use arrow keys for history navigation.</p>
+              <p>Current directory: <code>{activeSession.currentDirectory}</code></p>
             </div>
-            
-            {entry.isExecuting ? (
-              <div className="terminal-executing">
-                <span className="loading-spinner-small"></span>
-                <span>Executing...</span>
+          )}
+
+          {activeSession?.entries.map((entry) => (
+            <div key={entry.id} className="terminal-entry">
+              <div className="terminal-command">
+                <span className="terminal-prompt">{getPrompt(activeSession.currentDirectory)}</span>
+                <span className="terminal-input">{entry.command}</span>
+                <span className="terminal-timestamp">{formatTimestamp(entry.timestamp)}</span>
               </div>
-            ) : (
-              <div className="terminal-output">
-                {entry.output.stdout && (
-                  <pre className="terminal-stdout">{entry.output.stdout}</pre>
-                )}
-                {entry.output.stderr && (
-                  <pre className="terminal-stderr">{entry.output.stderr}</pre>
-                )}
-                {entry.output.exit_code !== undefined && entry.output.exit_code !== 0 && (
-                  <div className="terminal-exit-code">
-                    Exit code: {entry.output.exit_code}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+              
+              {entry.isExecuting ? (
+                <div className="terminal-executing">
+                  <div className="loading-spinner-small"></div>
+                  <span>Executing...</span>
+                </div>
+              ) : (
+                <div className="terminal-output">
+                  {entry.output.stdout && (
+                    <pre className="terminal-stdout">{entry.output.stdout}</pre>
+                  )}
+                  {entry.output.stderr && (
+                    <pre className="terminal-stderr">{entry.output.stderr}</pre>
+                  )}
+                  {entry.output.exit_code !== undefined && entry.output.exit_code !== 0 && (
+                    <div className="terminal-exit-code">
+                      Exit code: {entry.output.exit_code}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )) || []}
 
           <div className="terminal-input-line">
-            <span className="terminal-prompt">{getPrompt()}</span>
+            <span className="terminal-prompt">{getPrompt(activeSession?.currentDirectory || '/')}</span>
             <input
               ref={inputRef}
               type="text"

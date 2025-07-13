@@ -8,7 +8,7 @@ import Terminal from "./components/Terminal";
 import { SystemStats, DockerSystemInfo } from './types/docker';
 import "./App.css";
 
-type ActivePage = 'ask_gordon' | 'containers' | 'images' | 'volumes' | 'builds' | 'models' | 'mcp_toolkit' | 'docker_hub' | 'docker_scout' | 'extensions' | 'networks' | 'terminal';
+type ActivePage = 'containers' | 'images' | 'volumes' | 'builds' | 'networks' | 'terminal';
 
 interface NavigationItem {
   key: ActivePage;
@@ -25,16 +25,10 @@ function App() {
   const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
 
   const navigationItems: NavigationItem[] = [
-    { key: 'ask_gordon', icon: '✨', label: 'Ask Gordon', badge: 'BETA' },
     { key: 'containers', icon: '📦', label: 'Containers', page: 'containers' },
     { key: 'images', icon: '💿', label: 'Images', page: 'images' },
     { key: 'volumes', icon: '💾', label: 'Volumes', page: 'volumes' },
     { key: 'builds', icon: '🔨', label: 'Builds' },
-    { key: 'models', icon: '📦', label: 'Models', badge: 'BETA' },
-    { key: 'mcp_toolkit', icon: '🛠️', label: 'MCP Toolkit', badge: 'BETA' },
-    { key: 'docker_hub', icon: '🌐', label: 'Docker Hub' },
-    { key: 'docker_scout', icon: '🔍', label: 'Docker Scout' },
-    { key: 'extensions', icon: '🧩', label: 'Extensions' },
     { key: 'networks', icon: '🌐', label: 'Networks' },
     { key: 'terminal', icon: '🖥️', label: 'Terminal' },
   ];

@@ -485,6 +485,21 @@ async fn get_current_directory() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn get_home_directory() -> Result<String, String> {
+    match std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        Ok(home) => Ok(home),
+        Err(_) => Err("Failed to get home directory".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn set_working_directory(session_id: String, path: String) -> Result<String, String> {
+    // For now, we'll just return success. In a real implementation,
+    // we'd maintain per-session working directories
+    Ok(format!("Working directory set to {} for session {}", path, session_id))
+}
+
+#[tauri::command]
 async fn change_directory(path: String) -> Result<String, String> {
     match std::env::set_current_dir(&path) {
         Ok(_) => Ok(format!("Changed directory to: {}", path)),
@@ -676,7 +691,7 @@ pub fn run() {
             list_images, remove_image,
             list_volumes, remove_volume,
             list_networks, remove_network,
-            execute_command, get_current_directory, change_directory, execute_docker_command,
+            execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
             get_system_stats, get_docker_system_info, get_container_stats
         ])
         .run(tauri::generate_context!())
