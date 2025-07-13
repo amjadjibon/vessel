@@ -2,14 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NetworkInfo } from '../types/docker';
 
+interface ColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+  className?: string;
+}
+
 interface NetworkRowProps {
   network: NetworkInfo;
   isSelected: boolean;
   onToggleSelection: () => void;
   onUpdate: () => void;
+  visibleColumns: ColumnConfig[];
+  allColumns: ColumnConfig[];
 }
 
-const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onUpdate }) => {
+const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRemove = async () => {
@@ -41,6 +50,51 @@ const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSe
   const gateway = network.ipam.config.length > 0 ? network.ipam.config[0].gateway || '-' : '-';
   const connectedCount = Object.keys(network.containers).length;
 
+  const formatCreated = (createdAt?: string) => {
+    if (!createdAt) return '-';
+    const date = new Date(createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 30) return `${diffDays} days ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffDays / 365)} year${Math.floor(diffDays / 365) > 1 ? 's' : ''} ago`;
+  };
+
+  const getColumnValue = (columnId: string) => {
+    switch (columnId) {
+      case 'name':
+        return (
+          <div className="network-name-info">
+            <span className="network-name">{network.name}</span>
+            {isSystemNetwork && <span className="system-badge">System</span>}
+          </div>
+        );
+      case 'networkId':
+        return <code className="network-id">{network.id.substring(0, 12)}</code>;
+      case 'driver':
+        return network.driver;
+      case 'scope':
+        return network.scope;
+      case 'subnet':
+        return subnet;
+      case 'gateway':
+        return gateway;
+      case 'created':
+        return formatCreated(network.created);
+      case 'containers':
+        return `${connectedCount} container${connectedCount !== 1 ? 's' : ''}`;
+      case 'attachable':
+        return network.attachable ? 'Yes' : 'No';
+      case 'internal':
+        return network.internal ? 'Yes' : 'No';
+      default:
+        return null;
+    }
+  };
+
   return (
     <tr className={`network-row ${isSystemNetwork ? 'system-network' : ''}`}>
       <td className="checkbox-col">
@@ -48,43 +102,40 @@ const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSe
           type="checkbox"
           checked={isSelected}
           onChange={onToggleSelection}
+          disabled={isSystemNetwork}
         />
       </td>
-      <td className="network-name">
-        <div className="name-container">
-          <span className="name">{network.name}</span>
-          {network.internal && <span className="badge internal">Internal</span>}
-          {network.ingress && <span className="badge ingress">Ingress</span>}
-          {isSystemNetwork && <span className="badge system">System</span>}
+      <td className="status-col">
+        <div className={`status-indicator ${isSystemNetwork ? 'system' : 'active'}`}>
+          <div className="status-dot"></div>
         </div>
       </td>
-      <td className="network-id">
-        <code>{network.id.substring(0, 12)}</code>
+      {/* Always show Name first */}
+      <td className="name-col">
+        {getColumnValue('name')}
       </td>
-      <td className="driver">
-        <span className="driver-badge">{network.driver}</span>
-      </td>
-      <td className="scope">{network.scope}</td>
-      <td className="subnet">
-        <code>{subnet}</code>
-      </td>
-      <td className="gateway">
-        <code>{gateway}</code>
-      </td>
-      <td className="connected">
-        <span className="connected-count">
-          {connectedCount} container{connectedCount !== 1 ? 's' : ''}
-        </span>
-      </td>
+      {/* Then show configurable columns */}
+      {allColumns.filter(column => column.id !== 'name' && column.visible).map(column => (
+        <td key={column.id} className={column.className || `${column.id}-col`}>
+          {getColumnValue(column.id)}
+        </td>
+      ))}
       <td className="actions-col">
-        <div className="actions">
+        <div className="action-buttons">
+          <button
+            className="action-button copy"
+            title="Copy network ID"
+            onClick={() => navigator.clipboard.writeText(network.id)}
+          >
+            📋
+          </button>
           <button
             onClick={handleRemove}
             disabled={isLoading || isSystemNetwork}
             className="action-button remove"
-            title={isSystemNetwork ? 'Cannot remove system networks' : 'Remove network'}
+            title={isSystemNetwork ? "Cannot remove system networks" : "Remove network"}
           >
-            {isLoading ? '⏳' : '🗑️'}
+            🗑️
           </button>
         </div>
       </td>
@@ -97,6 +148,21 @@ const NetworkList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNetworks, setSelectedNetworks] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+  const [columns, setColumns] = useState<ColumnConfig[]>([
+    { id: 'name', label: 'Name', visible: true, className: 'name-col' },
+    { id: 'networkId', label: 'Network ID', visible: true, className: 'network-id-col' },
+    { id: 'driver', label: 'Driver', visible: true, className: 'driver-col' },
+    { id: 'scope', label: 'Scope', visible: true, className: 'scope-col' },
+    { id: 'subnet', label: 'Subnet', visible: false, className: 'subnet-col' },
+    { id: 'gateway', label: 'Gateway', visible: false, className: 'gateway-col' },
+    { id: 'created', label: 'Created', visible: false, className: 'created-col' },
+    { id: 'containers', label: 'Containers', visible: false, className: 'containers-col' },
+    { id: 'attachable', label: 'Attachable', visible: false, className: 'attachable-col' },
+    { id: 'internal', label: 'Internal', visible: false, className: 'internal-col' },
+  ]);
 
   const loadNetworks = async () => {
     try {
@@ -116,6 +182,19 @@ const NetworkList: React.FC = () => {
     loadNetworks();
   }, []);
 
+  // Close column selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showColumnSelector && !target.closest('.column-selector-container')) {
+        setShowColumnSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnSelector]);
+
   const toggleNetworkSelection = (networkId: string) => {
     setSelectedNetworks(prev => {
       const newSelected = new Set(prev);
@@ -128,9 +207,37 @@ const NetworkList: React.FC = () => {
     });
   };
 
+  const toggleColumnVisibility = (columnId: string) => {
+    setColumns(prevColumns =>
+      prevColumns.map(col =>
+        col.id === columnId ? { ...col, visible: !col.visible } : col
+      )
+    );
+  };
+
+  const showAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: true }))
+    );
+  };
+
+  const hideAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: false }))
+    );
+  };
+
   const isSystemNetwork = (networkName: string): boolean => {
     return ['bridge', 'host', 'none'].includes(networkName);
   };
+
+  const filteredNetworks = networks.filter(network => {
+    const matchesSearch = network.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         network.id.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
+  });
+
+  const visibleColumns = columns.filter(col => col.visible);
 
   if (loading) {
     return (
@@ -159,35 +266,64 @@ const NetworkList: React.FC = () => {
     <div className="network-list">
       <div className="network-list-header">
         <h2>Networks</h2>
-        <p className="page-subtitle">Manage Docker networks and network configuration.</p>
+        <p className="page-subtitle">Manage your Docker networks and configure connectivity between containers. <a href="#">Learn more</a></p>
         
-        {/* Stats Section */}
-        <div className="stats-section">
-          <div className="stat-item">
-            <span className="stat-label">Total networks</span>
-            <span className="stat-value">{networks.length}</span>
-            <span className="stat-note">across all types</span>
+        <div className="controls-section">
+          <div className="search-and-filter">
+            <div className="search-container">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
+              />
+            </div>
+            <div className="column-selector-container">
+              <button
+                onClick={() => setShowColumnSelector(!showColumnSelector)}
+                className="column-selector-button"
+                title="Configure columns"
+              >
+                ⚙️
+              </button>
+              {showColumnSelector && (
+                <div className="column-selector-dropdown">
+                  <div className="column-selector-header">
+                    <span>Columns</span>
+                  </div>
+                  <div className="column-selector-list">
+                    {columns.filter(column => column.id !== 'name').map(column => (
+                      <label key={column.id} className="column-selector-item">
+                        <input
+                          type="checkbox"
+                          checked={column.visible}
+                          onChange={() => toggleColumnVisibility(column.id)}
+                        />
+                        <span className="column-label">{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="column-selector-actions">
+                    <button onClick={hideAllColumns} className="column-action-button">
+                      Hide all
+                    </button>
+                    <button onClick={showAllColumns} className="column-action-button">
+                      Show all
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="stat-item">
-            <span className="stat-label">User networks</span>
-            <span className="stat-value">{networks.filter(n => !isSystemNetwork(n.name)).length}</span>
-            <span className="stat-note">custom networks</span>
+          <div className="header-actions">
+            <button onClick={loadNetworks} className="refresh-button">
+              🔄 Refresh
+            </button>
+            <button className="create-button">
+              Create
+            </button>
           </div>
-          <div className="stat-item">
-            <span className="stat-label">System networks</span>
-            <span className="stat-value">{networks.filter(n => isSystemNetwork(n.name)).length}</span>
-            <span className="stat-note">built-in networks</span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <span className="results-count">{networks.length} networks</span>
-          </div>
-          <button onClick={loadNetworks} className="refresh-button">
-            🔄 Refresh
-          </button>
         </div>
       </div>
       
@@ -198,44 +334,51 @@ const NetworkList: React.FC = () => {
               <th className="checkbox-col">
                 <input 
                   type="checkbox" 
-                  checked={selectedNetworks.size > 0 && selectedNetworks.size === networks.length}
+                  checked={selectedNetworks.size > 0 && selectedNetworks.size === filteredNetworks.filter(n => !isSystemNetwork(n.name)).length}
                   onChange={() => {
-                    if (selectedNetworks.size === networks.length) {
+                    const selectableNetworks = filteredNetworks.filter(n => !isSystemNetwork(n.name));
+                    if (selectedNetworks.size === selectableNetworks.length) {
                       setSelectedNetworks(new Set());
                     } else {
-                      setSelectedNetworks(new Set(networks.map(n => n.id)));
+                      setSelectedNetworks(new Set(selectableNetworks.map(net => net.id)));
                     }
                   }}
                 />
               </th>
-              <th>Name</th>
-              <th>Network ID</th>
-              <th>Driver</th>
-              <th>Scope</th>
-              <th>Subnet</th>
-              <th>Gateway</th>
-              <th>Connected</th>
+              <th className="status-col"></th>
+              <th className="name-col">Name</th>
+              {columns.filter(column => column.id !== 'name' && column.visible).map(column => (
+                <th key={column.id} className={column.className}>
+                  {column.label}
+                </th>
+              ))}
               <th className="actions-col">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {networks.length === 0 ? (
+            {filteredNetworks.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty-row">
+                <td colSpan={1 + columns.filter(col => col.id !== 'name' && col.visible).length + 3} className="empty-row">
                   <div className="empty-state">
                     <h3>No networks found</h3>
-                    <p>No Docker networks are available on this system.</p>
+                    <p>
+                      {searchTerm 
+                        ? 'No networks match your search criteria.' 
+                        : 'No Docker networks are available on this system.'}
+                    </p>
                   </div>
                 </td>
               </tr>
             ) : (
-              networks.map((network) => (
+              filteredNetworks.map((network) => (
                 <NetworkRow
                   key={network.id}
                   network={network}
                   isSelected={selectedNetworks.has(network.id)}
                   onToggleSelection={() => toggleNetworkSelection(network.id)}
                   onUpdate={loadNetworks}
+                  visibleColumns={visibleColumns}
+                  allColumns={columns}
                 />
               ))
             )}

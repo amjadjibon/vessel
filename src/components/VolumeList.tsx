@@ -2,10 +2,142 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { VolumeInfo } from '../types/docker';
 
+interface ColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+  className?: string;
+}
+
+interface VolumeRowProps {
+  volume: VolumeInfo;
+  isSelected: boolean;
+  onToggleSelection: () => void;
+  onUpdate: () => void;
+  visibleColumns: ColumnConfig[];
+  allColumns: ColumnConfig[];
+}
+
+const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleRemove = async () => {
+    if (!confirm(`Are you sure you want to remove volume ${volume.name}?`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await invoke<string>('remove_volume', { volumeName: volume.name });
+      console.log(result);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to remove volume:', error);
+      alert(`Failed to remove volume: ${error}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatCreated = (createdAt?: string) => {
+    if (!createdAt) return '-';
+    const date = new Date(createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 30) return `${diffDays} days ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffDays / 365)} year${Math.floor(diffDays / 365) > 1 ? 's' : ''} ago`;
+  };
+
+  const formatSize = (mountpoint: string) => {
+    // For now, return mock size data - in real implementation, you'd get actual volume size
+    const mockSizes = ['45.4 MB', '0 Bytes', '46.1 MB', '38.2 MB', '1.9 GB', '56 Bytes'];
+    const hash = mountpoint.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    return mockSizes[hash % mockSizes.length];
+  };
+
+  const getColumnValue = (columnId: string) => {
+    switch (columnId) {
+      case 'name':
+        return <span className="volume-name">{volume.name}</span>;
+      case 'created':
+        return formatCreated(volume.created_at);
+      case 'size':
+        return formatSize(volume.mountpoint);
+      case 'driver':
+        return volume.driver;
+      case 'scope':
+        return volume.scope;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <tr className="volume-row">
+      <td className="checkbox-col">
+        <input 
+          type="checkbox" 
+          checked={isSelected}
+          onChange={onToggleSelection}
+        />
+      </td>
+      <td className="status-col">
+        <div className="status-indicator active">
+          <div className="status-dot"></div>
+        </div>
+      </td>
+      {/* Always show Name first */}
+      <td className="name-col">
+        {getColumnValue('name')}
+      </td>
+      {/* Then show configurable columns */}
+      {allColumns.filter(column => column.id !== 'name' && column.visible).map(column => (
+        <td key={column.id} className={column.className || `${column.id}-col`}>
+          {getColumnValue(column.id)}
+        </td>
+      ))}
+      <td className="actions-col">
+        <div className="action-buttons">
+          <button
+            className="action-button copy"
+            title="Copy volume name"
+            onClick={() => navigator.clipboard.writeText(volume.name)}
+          >
+            📋
+          </button>
+          <button
+            onClick={handleRemove}
+            disabled={isLoading}
+            className="action-button remove"
+            title="Remove volume"
+          >
+            🗑️
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 const VolumeList: React.FC = () => {
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVolumes, setSelectedVolumes] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+  const [columns, setColumns] = useState<ColumnConfig[]>([
+    { id: 'name', label: 'Name', visible: true, className: 'name-col' },
+    { id: 'created', label: 'Created', visible: true, className: 'created-col' },
+    { id: 'size', label: 'Size', visible: true, className: 'size-col' },
+    { id: 'driver', label: 'Driver', visible: false, className: 'driver-col' },
+    { id: 'scope', label: 'Scope', visible: false, className: 'scope-col' },
+  ]);
 
   const loadVolumes = async () => {
     try {
@@ -24,6 +156,58 @@ const VolumeList: React.FC = () => {
   useEffect(() => {
     loadVolumes();
   }, []);
+
+  // Close column selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showColumnSelector && !target.closest('.column-selector-container')) {
+        setShowColumnSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnSelector]);
+
+  const toggleVolumeSelection = (volumeName: string) => {
+    setSelectedVolumes(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(volumeName)) {
+        newSelected.delete(volumeName);
+      } else {
+        newSelected.add(volumeName);
+      }
+      return newSelected;
+    });
+  };
+
+  const toggleColumnVisibility = (columnId: string) => {
+    setColumns(prevColumns =>
+      prevColumns.map(col =>
+        col.id === columnId ? { ...col, visible: !col.visible } : col
+      )
+    );
+  };
+
+  const showAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: true }))
+    );
+  };
+
+  const hideAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: false }))
+    );
+  };
+
+  const filteredVolumes = volumes.filter(volume => {
+    const matchesSearch = volume.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
+  });
+
+  const visibleColumns = columns.filter(col => col.visible);
 
   if (loading) {
     return (
@@ -48,93 +232,66 @@ const VolumeList: React.FC = () => {
     );
   }
 
-  if (volumes.length === 0) {
-    return (
-      <div className="volume-list empty">
-        <div className="empty-state">
-          <h3>No volumes found</h3>
-          <p>No Docker volumes are available on this system.</p>
-          <button onClick={loadVolumes} className="refresh-button">
-            🔄 Refresh
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="volume-list">
       <div className="volume-list-header">
         <h2>Volumes</h2>
-        <p className="page-subtitle">Manage your volumes, view usage, and inspect their contents.</p>
+        <p className="page-subtitle">Manage your volumes, view usage, and inspect their contents. <a href="#">Learn more</a></p>
         
-        {/* Stats Section */}
-        <div className="stats-section">
-          <div className="stat-item">
-            <span className="stat-label">Total volumes</span>
-            <span className="stat-value">{volumes.length}</span>
-            <span className="stat-note">active and inactive</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Volume storage</span>
-            <span className="stat-value">2.1 GB</span>
-            <span className="stat-note">estimated usage</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Last scan</span>
-            <span className="stat-value">Just now</span>
-            <span className="stat-note">auto-scan enabled</span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <input 
-              type="text" 
-              placeholder="Search volumes..." 
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                width: '300px'
-              }}
-            />
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button style={{
-                padding: '6px 12px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '4px 0 0 4px',
-                backgroundColor: '#4A90E2',
-                color: 'white',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}>📋 List</button>
-              <button style={{
-                padding: '6px 12px',
-                border: '1px solid #e0e0e0',
-                borderLeft: 'none',
-                borderRadius: '0 4px 4px 0',
-                backgroundColor: 'white',
-                color: '#757575',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}>⊞ Grid</button>
+        <div className="controls-section">
+          <div className="search-and-filter">
+            <div className="search-container">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
+              />
+            </div>
+            <div className="column-selector-container">
+              <button
+                onClick={() => setShowColumnSelector(!showColumnSelector)}
+                className="column-selector-button"
+                title="Configure columns"
+              >
+                ⚙️
+              </button>
+              {showColumnSelector && (
+                <div className="column-selector-dropdown">
+                  <div className="column-selector-header">
+                    <span>Columns</span>
+                  </div>
+                  <div className="column-selector-list">
+                    {columns.filter(column => column.id !== 'name').map(column => (
+                      <label key={column.id} className="column-selector-item">
+                        <input
+                          type="checkbox"
+                          checked={column.visible}
+                          onChange={() => toggleColumnVisibility(column.id)}
+                        />
+                        <span className="column-label">{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="column-selector-actions">
+                    <button onClick={hideAllColumns} className="column-action-button">
+                      Hide all
+                    </button>
+                    <button onClick={showAllColumns} className="column-action-button">
+                      Show all
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={{
-              padding: '8px 16px',
-              border: '1px solid #F44336',
-              borderRadius: '4px',
-              backgroundColor: '#F44336',
-              color: 'white',
-              fontSize: '14px',
-              cursor: 'pointer'
-            }}>🗑️ Delete</button>
+          <div className="header-actions">
             <button onClick={loadVolumes} className="refresh-button">
               🔄 Refresh
+            </button>
+            <button className="create-button">
+              Create
             </button>
           </div>
         </div>
@@ -145,109 +302,59 @@ const VolumeList: React.FC = () => {
           <thead>
             <tr>
               <th className="checkbox-col">
-                <input type="checkbox" />
+                <input 
+                  type="checkbox" 
+                  checked={selectedVolumes.size > 0 && selectedVolumes.size === filteredVolumes.length}
+                  onChange={() => {
+                    if (selectedVolumes.size === filteredVolumes.length) {
+                      setSelectedVolumes(new Set());
+                    } else {
+                      setSelectedVolumes(new Set(filteredVolumes.map(vol => vol.name)));
+                    }
+                  }}
+                />
               </th>
               <th className="status-col"></th>
-              <th>Name</th>
-              <th>Created</th>
-              <th>Size</th>
+              <th className="name-col">Name</th>
+              {columns.filter(column => column.id !== 'name' && column.visible).map(column => (
+                <th key={column.id} className={column.className}>
+                  {column.label}
+                </th>
+              ))}
               <th className="actions-col">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {volumes.map((volume) => (
-              <VolumeRow
-                key={volume.name}
-                volume={volume}
-                onUpdate={loadVolumes}
-              />
-            ))}
+            {filteredVolumes.length === 0 ? (
+              <tr>
+                <td colSpan={1 + columns.filter(col => col.id !== 'name' && col.visible).length + 3} className="empty-row">
+                  <div className="empty-state">
+                    <h3>No volumes found</h3>
+                    <p>
+                      {searchTerm 
+                        ? 'No volumes match your search criteria.' 
+                        : 'No Docker volumes are available on this system.'}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              filteredVolumes.map((volume) => (
+                <VolumeRow
+                  key={volume.name}
+                  volume={volume}
+                  isSelected={selectedVolumes.has(volume.name)}
+                  onToggleSelection={() => toggleVolumeSelection(volume.name)}
+                  onUpdate={loadVolumes}
+                  visibleColumns={visibleColumns}
+                  allColumns={columns}
+                />
+              ))
+            )}
           </tbody>
         </table>
       </div>
-      
-      {volumes.length > 0 && (
-        <div className="table-footer">
-          <span className="selection-count">Selected 0 of {volumes.length}</span>
-        </div>
-      )}
     </div>
-  );
-};
-
-interface VolumeRowProps {
-  volume: VolumeInfo;
-  onUpdate: () => void;
-}
-
-const VolumeRow: React.FC<VolumeRowProps> = ({ volume, onUpdate }) => {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleRemove = async () => {
-    if (!confirm(`Are you sure you want to remove volume ${volume.name}?`)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await invoke<string>('remove_volume', { volumeName: volume.name });
-      console.log(result);
-      onUpdate();
-    } catch (error) {
-      console.error('Failed to remove volume:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const formatCreated = (createdAt?: string) => {
-    if (!createdAt) return 'Unknown';
-    const now = Date.now();
-    const created = new Date(createdAt).getTime();
-    const diff = now - created;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const months = Math.floor(days / 30);
-
-    if (months > 0) return `${months} month${months > 1 ? 's' : ''} ago`;
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-    return 'Today';
-  };
-
-  const isActive = Object.keys(volume.labels).length > 0;
-
-  return (
-    <tr>
-      <td>
-        <input type="checkbox" />
-      </td>
-      <td>
-        <span className={`status-icon ${isActive ? 'active' : 'inactive'}`} title={isActive ? 'Active' : 'Inactive'}></span>
-      </td>
-      <td>
-        <strong>{volume.name}</strong>
-      </td>
-      <td>
-        {formatCreated(volume.created_at)}
-      </td>
-      <td>
-        0 Bytes
-      </td>
-      <td>
-        <div className="action-buttons">
-          <button
-            onClick={handleRemove}
-            disabled={isLoading}
-            className="action-btn delete"
-            title="Remove volume"
-          >
-            🗑️
-          </button>
-          <button className="action-btn more" title="More actions">
-            ⋯
-          </button>
-        </div>
-      </td>
-    </tr>
   );
 };
 

@@ -8,7 +8,7 @@ import Terminal from "./components/Terminal";
 import { SystemStats, DockerSystemInfo } from './types/docker';
 import "./App.css";
 
-type ActivePage = 'containers' | 'images' | 'volumes' | 'builds' | 'networks' | 'terminal';
+type ActivePage = 'containers' | 'images' | 'volumes' | 'networks' | 'terminal';
 
 interface NavigationItem {
   key: ActivePage;
@@ -28,7 +28,6 @@ function App() {
     { key: 'containers', icon: '📦', label: 'Containers', page: 'containers' },
     { key: 'images', icon: '💿', label: 'Images', page: 'images' },
     { key: 'volumes', icon: '💾', label: 'Volumes', page: 'volumes' },
-    { key: 'builds', icon: '🔨', label: 'Builds' },
     { key: 'networks', icon: '🌐', label: 'Networks' },
     { key: 'terminal', icon: '🖥️', label: 'Terminal' },
   ];
