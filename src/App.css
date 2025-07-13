@@ -854,6 +854,88 @@ body {
   cursor: not-allowed;
 }
 
+/* Project Header Styles */
+.project-header {
+  background-color: #f8f9fa;
+  border-top: 2px solid #dee2e6;
+  font-weight: 500;
+}
+
+.project-header:hover {
+  background-color: #f0f0f0;
+}
+
+.expand-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6c757d;
+  padding: 4px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.expand-button:hover {
+  background-color: #e9ecef;
+}
+
+.project-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-name {
+  color: #495057;
+  font-size: 14px;
+}
+
+.project-stats {
+  color: #6c757d;
+  font-size: 12px;
+  background-color: #e9ecef;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.project-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.project-actions .action-btn {
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+/* Container Row Styles */
+.container-row.has-project {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.container-row.has-project td:first-child {
+  padding-left: 24px;
+}
+
+.container-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.service-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.container-full-name {
+  color: #6c757d;
+  font-size: 11px;
+  font-weight: normal;
+}
+
 /* Custom scrollbar for terminal */
 .terminal-content::-webkit-scrollbar {
   width: 6px;

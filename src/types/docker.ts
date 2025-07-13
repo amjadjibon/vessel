@@ -6,6 +6,9 @@ export interface ContainerInfo {
   state: string;
   created: number;
   ports: PortInfo[];
+  project?: string;
+  service?: string;
+  labels: Record<string, string>;
 }
 
 export interface PortInfo {
@@ -124,4 +127,11 @@ export interface DockerSystemInfo {
   images_total: number;
   volumes_total: number;
   networks_total: number;
+}
+
+export interface ContainerProject {
+  name: string;
+  containers: ContainerInfo[];
+  isExpanded: boolean;
+  isSelected: boolean;
 }

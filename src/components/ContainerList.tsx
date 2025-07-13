@@ -1,14 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ContainerInfo, SystemStats, DockerSystemInfo, ContainerStats } from '../types/docker';
+import { ContainerInfo, SystemStats, DockerSystemInfo, ContainerStats, ContainerProject } from '../types/docker';
 
 const ContainerList: React.FC = () => {
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
+  const [projects, setProjects] = useState<ContainerProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
   const [containerStats, setContainerStats] = useState<Map<string, ContainerStats>>(new Map());
+  const [selectedContainers, setSelectedContainers] = useState<Set<string>>(new Set());
+
+  const groupContainersByProject = (containers: ContainerInfo[]): ContainerProject[] => {
+    const projectMap = new Map<string, ContainerInfo[]>();
+    
+    containers.forEach(container => {
+      const projectName = container.project || 'Individual Containers';
+      if (!projectMap.has(projectName)) {
+        projectMap.set(projectName, []);
+      }
+      projectMap.get(projectName)!.push(container);
+    });
+
+    return Array.from(projectMap.entries()).map(([name, containers]) => ({
+      name,
+      containers: containers.sort((a, b) => a.name.localeCompare(b.name)),
+      isExpanded: true,
+      isSelected: false,
+    })).sort((a, b) => {
+      // Put "Individual Containers" at the end
+      if (a.name === 'Individual Containers') return 1;
+      if (b.name === 'Individual Containers') return -1;
+      return a.name.localeCompare(b.name);
+    });
+  };
 
   const loadContainers = async () => {
     try {
@@ -16,6 +42,7 @@ const ContainerList: React.FC = () => {
       setError(null);
       const containerList = await invoke<ContainerInfo[]>('list_containers');
       setContainers(containerList);
+      setProjects(groupContainersByProject(containerList));
     } catch (err) {
       setError(err as string);
       console.error('Failed to load containers:', err);
@@ -73,6 +100,67 @@ const ContainerList: React.FC = () => {
       return () => clearInterval(interval);
     }
   }, [containers]);
+
+  const toggleProjectExpansion = (projectName: string) => {
+    setProjects(prevProjects =>
+      prevProjects.map(project =>
+        project.name === projectName
+          ? { ...project, isExpanded: !project.isExpanded }
+          : project
+      )
+    );
+  };
+
+  const toggleProjectSelection = (projectName: string) => {
+    const project = projects.find(p => p.name === projectName);
+    if (!project) return;
+
+    const containerIds = project.containers.map(c => c.id);
+    
+    setSelectedContainers(prev => {
+      const newSelected = new Set(prev);
+      const allSelected = containerIds.every(id => newSelected.has(id));
+      
+      if (allSelected) {
+        // Deselect all containers in this project
+        containerIds.forEach(id => newSelected.delete(id));
+      } else {
+        // Select all containers in this project
+        containerIds.forEach(id => newSelected.add(id));
+      }
+      
+      return newSelected;
+    });
+  };
+
+  const toggleContainerSelection = (containerId: string) => {
+    setSelectedContainers(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(containerId)) {
+        newSelected.delete(containerId);
+      } else {
+        newSelected.add(containerId);
+      }
+      return newSelected;
+    });
+  };
+
+  const handleProjectAction = async (projectName: string, action: 'start' | 'stop' | 'restart') => {
+    const project = projects.find(p => p.name === projectName);
+    if (!project) return;
+
+    const promises = project.containers.map(container =>
+      invoke<string>(`${action}_container`, { containerId: container.id })
+        .catch(error => console.error(`Failed to ${action} container ${container.name}:`, error))
+    );
+
+    try {
+      await Promise.all(promises);
+      loadContainers(); // Refresh the list
+    } catch (error) {
+      console.error(`Failed to ${action} project containers:`, error);
+    }
+  };
 
   if (loading) {
     return (
@@ -178,7 +266,17 @@ const ContainerList: React.FC = () => {
           <thead>
             <tr>
               <th className="checkbox-col">
-                <input type="checkbox" />
+                <input 
+                  type="checkbox" 
+                  checked={selectedContainers.size > 0 && selectedContainers.size === containers.length}
+                  onChange={() => {
+                    if (selectedContainers.size === containers.length) {
+                      setSelectedContainers(new Set());
+                    } else {
+                      setSelectedContainers(new Set(containers.map(c => c.id)));
+                    }
+                  }}
+                />
               </th>
               <th className="status-col"></th>
               <th>Name</th>
@@ -191,13 +289,26 @@ const ContainerList: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {containers.map((container) => (
-              <ContainerRow
-                key={container.id}
-                container={container}
-                containerStats={containerStats.get(container.id)}
-                onUpdate={loadContainers}
-              />
+            {projects.map((project) => (
+              <React.Fragment key={project.name}>
+                <ProjectHeader 
+                  project={project}
+                  selectedContainers={selectedContainers}
+                  onToggleExpansion={() => toggleProjectExpansion(project.name)}
+                  onToggleSelection={() => toggleProjectSelection(project.name)}
+                  onProjectAction={handleProjectAction}
+                />
+                {project.isExpanded && project.containers.map((container) => (
+                  <ContainerRow
+                    key={container.id}
+                    container={container}
+                    containerStats={containerStats.get(container.id)}
+                    isSelected={selectedContainers.has(container.id)}
+                    onToggleSelection={() => toggleContainerSelection(container.id)}
+                    onUpdate={loadContainers}
+                  />
+                ))}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -206,13 +317,95 @@ const ContainerList: React.FC = () => {
   );
 };
 
+interface ProjectHeaderProps {
+  project: ContainerProject;
+  selectedContainers: Set<string>;
+  onToggleExpansion: () => void;
+  onToggleSelection: () => void;
+  onProjectAction: (projectName: string, action: 'start' | 'stop' | 'restart') => void;
+}
+
+const ProjectHeader: React.FC<ProjectHeaderProps> = ({ 
+  project, 
+  selectedContainers, 
+  onToggleExpansion, 
+  onToggleSelection,
+  onProjectAction 
+}) => {
+  const containerIds = project.containers.map(c => c.id);
+  const allSelected = containerIds.length > 0 && containerIds.every(id => selectedContainers.has(id));
+  const someSelected = containerIds.some(id => selectedContainers.has(id));
+  
+  const runningContainers = project.containers.filter(c => c.state.toLowerCase() === 'running').length;
+  const totalContainers = project.containers.length;
+
+  return (
+    <tr className="project-header">
+      <td>
+        <input 
+          type="checkbox" 
+          checked={allSelected}
+          ref={input => {
+            if (input) input.indeterminate = someSelected && !allSelected;
+          }}
+          onChange={onToggleSelection}
+        />
+      </td>
+      <td>
+        <button 
+          className="expand-button"
+          onClick={onToggleExpansion}
+          title={project.isExpanded ? "Collapse" : "Expand"}
+        >
+          {project.isExpanded ? '▼' : '▶'}
+        </button>
+      </td>
+      <td colSpan={5}>
+        <div className="project-info">
+          <strong className="project-name">{project.name}</strong>
+          <span className="project-stats">
+            {runningContainers} of {totalContainers} running
+          </span>
+        </div>
+      </td>
+      <td>
+        <div className="project-actions">
+          <button
+            onClick={() => onProjectAction(project.name, 'start')}
+            className="action-btn start"
+            title="Start all containers"
+          >
+            ▶️
+          </button>
+          <button
+            onClick={() => onProjectAction(project.name, 'stop')}
+            className="action-btn stop"
+            title="Stop all containers"
+          >
+            ⏹️
+          </button>
+          <button
+            onClick={() => onProjectAction(project.name, 'restart')}
+            className="action-btn restart"
+            title="Restart all containers"
+          >
+            🔄
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 interface ContainerRowProps {
   container: ContainerInfo;
   containerStats?: ContainerStats;
+  isSelected: boolean;
+  onToggleSelection: () => void;
   onUpdate: () => void;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, onUpdate }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
@@ -274,15 +467,26 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
   };
 
   return (
-    <tr>
+    <tr className={`container-row ${container.project ? 'has-project' : ''}`}>
       <td>
-        <input type="checkbox" />
+        <input 
+          type="checkbox" 
+          checked={isSelected}
+          onChange={onToggleSelection}
+        />
       </td>
       <td>
         {getStatusIcon(container.state)}
       </td>
       <td>
-        <strong>{container.name}</strong>
+        <div className="container-name">
+          <strong>{container.service || container.name}</strong>
+          {container.service && (
+            <span className="service-info">
+              <small className="container-full-name">{container.name}</small>
+            </span>
+          )}
+        </div>
       </td>
       <td>
         <span className="container-id-short">{container.id.substring(0, 12)}</span>

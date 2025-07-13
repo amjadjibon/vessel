@@ -20,6 +20,9 @@ pub struct ContainerInfo {
     pub state: String,
     pub created: i64,
     pub ports: Vec<PortInfo>,
+    pub project: Option<String>,
+    pub service: Option<String>,
+    pub labels: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -186,6 +189,18 @@ async fn list_containers() -> Result<Vec<ContainerInfo>, String> {
                 })
                 .collect();
 
+            // Extract labels from container
+            let labels = container.labels.unwrap_or_default();
+            
+            // Extract project name from Docker Compose labels
+            let project = labels.get("com.docker.compose.project")
+                .or_else(|| labels.get("com.docker.compose.project.name"))
+                .cloned();
+                
+            // Extract service name from Docker Compose labels
+            let service = labels.get("com.docker.compose.service")
+                .cloned();
+
             ContainerInfo {
                 id: container.id.unwrap_or_else(|| "unknown".to_string()),
                 name,
@@ -194,6 +209,9 @@ async fn list_containers() -> Result<Vec<ContainerInfo>, String> {
                 state: container.state.unwrap_or_else(|| "unknown".to_string()),
                 created: container.created.unwrap_or(0),
                 ports,
+                project,
+                service,
+                labels,
             }
         })
         .collect();
