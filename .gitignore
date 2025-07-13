@@ -22,3 +22,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# VSCode
+.vscode/
+
+# JetBrains
+.idea/
+
+# Cursor
+.cursorrules
+.cursor/
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
