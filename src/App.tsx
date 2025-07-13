@@ -1,9 +1,13 @@
 import { useState } from "react";
 import ContainerList from "./components/ContainerList";
+import ImageList from "./components/ImageList";
+import VolumeList from "./components/VolumeList";
+import NetworkList from "./components/NetworkList";
+import Terminal from "./components/Terminal";
 import "./App.css";
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'containers' | 'images' | 'volumes'>('containers');
+  const [activeTab, setActiveTab] = useState<'containers' | 'images' | 'volumes' | 'networks' | 'terminal'>('containers');
 
   return (
     <div className="app">
@@ -28,23 +32,27 @@ function App() {
           >
             💾 Volumes
           </button>
+          <button 
+            className={`nav-button ${activeTab === 'networks' ? 'active' : ''}`}
+            onClick={() => setActiveTab('networks')}
+          >
+            🌐 Networks
+          </button>
+          <button 
+            className={`nav-button ${activeTab === 'terminal' ? 'active' : ''}`}
+            onClick={() => setActiveTab('terminal')}
+          >
+            🖥️ Terminal
+          </button>
         </nav>
       </header>
 
       <main className="app-main">
         {activeTab === 'containers' && <ContainerList />}
-        {activeTab === 'images' && (
-          <div className="placeholder">
-            <h2>Images</h2>
-            <p>Image management coming soon...</p>
-          </div>
-        )}
-        {activeTab === 'volumes' && (
-          <div className="placeholder">
-            <h2>Volumes</h2>
-            <p>Volume management coming soon...</p>
-          </div>
-        )}
+        {activeTab === 'images' && <ImageList />}
+        {activeTab === 'volumes' && <VolumeList />}
+        {activeTab === 'networks' && <NetworkList />}
+        {activeTab === 'terminal' && <Terminal />}
       </main>
     </div>
   );
