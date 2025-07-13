@@ -395,6 +395,215 @@ body {
   text-align: right;
 }
 
+/* Images Page Styles */
+.tabs-section {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+}
+
+.tab {
+  padding: 8px 16px;
+  border: 1px solid #e0e0e0;
+  background-color: white;
+  color: #757575;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.tab:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.tab.active {
+  background-color: #4A90E2;
+  color: white;
+  border-color: #4A90E2;
+}
+
+.tab:hover:not(.active) {
+  background-color: #f5f5f5;
+}
+
+/* Usage Section */
+.usage-section {
+  margin-bottom: 20px;
+}
+
+.usage-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.usage-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50 0%, #FFC107 70%, #FF5722 100%);
+  transition: width 0.3s ease;
+}
+
+.usage-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #757575;
+}
+
+/* Image Table Columns */
+.data-table .tag-col {
+  min-width: 200px;
+}
+
+.data-table .image-id-col {
+  width: 120px;
+}
+
+.data-table .created-col {
+  width: 120px;
+}
+
+.data-table .size-col {
+  width: 100px;
+  text-align: right;
+}
+
+.data-table .virtual-size-col {
+  width: 120px;
+  text-align: right;
+}
+
+.data-table .shared-size-col {
+  width: 120px;
+  text-align: right;
+}
+
+/* Image Row Styles */
+.image-row {
+  transition: background-color 0.2s ease;
+}
+
+.image-row:hover {
+  background-color: #f8f9fa;
+}
+
+.image-row.dangling {
+  background-color: #fff3e0;
+}
+
+.image-row.dangling:hover {
+  background-color: #ffecb3;
+}
+
+/* Image Tag Info */
+.image-tag-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-name {
+  color: #212121;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.dangling-badge {
+  background-color: #ff9800;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.image-id {
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  color: #757575;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Status indicators for images */
+.status-indicator.dangling .status-dot {
+  background-color: #ff9800;
+  border-color: #ff9800;
+}
+
+.status-indicator.active .status-dot {
+  background-color: #4caf50;
+  border-color: #4caf50;
+}
+
+/* Responsive design for images table */
+@media (max-width: 1200px) {
+  .image-list .table-container {
+    overflow-x: auto;
+  }
+  
+  .image-list .data-table {
+    min-width: 800px;
+  }
+  
+  /* Fix Tag and Actions columns */
+  .image-list .data-table .tag-col {
+    position: sticky;
+    left: 80px; /* checkbox + status width */
+    background-color: white;
+    z-index: 2;
+    border-right: 1px solid #e0e0e0;
+  }
+  
+  .image-list .data-table .actions-col {
+    position: sticky;
+    right: 0;
+    background-color: white;
+    z-index: 2;
+    border-left: 1px solid #e0e0e0;
+  }
+  
+  /* Ensure checkbox and status remain visible */
+  .image-list .data-table .checkbox-col {
+    position: sticky;
+    left: 0;
+    background-color: white;
+    z-index: 3;
+  }
+  
+  .image-list .data-table .status-col {
+    position: sticky;
+    left: 40px; /* checkbox width */
+    background-color: white;
+    z-index: 3;
+  }
+  
+  /* Dangling row adjustments */
+  .image-list .image-row.dangling .checkbox-col,
+  .image-list .image-row.dangling .status-col,
+  .image-list .image-row.dangling .tag-col,
+  .image-list .image-row.dangling .actions-col {
+    background-color: #fff3e0;
+  }
+  
+  .image-list .image-row.dangling:hover .checkbox-col,
+  .image-list .image-row.dangling:hover .status-col,
+  .image-list .image-row.dangling:hover .tag-col,
+  .image-list .image-row.dangling:hover .actions-col {
+    background-color: #ffecb3;
+  }
+}
+
 .sidebar-nav {
   padding: 8px 0;
 }

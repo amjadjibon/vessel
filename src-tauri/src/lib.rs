@@ -295,12 +295,58 @@ async fn remove_image(image_id: String) -> Result<String, String> {
     let docker = Docker::connect_with_socket_defaults()
         .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
 
-    docker
-        .remove_image(&image_id, None, None)
-        .await
-        .map_err(|e| format!("Failed to remove image: {}", e))?;
+    // Use RemoveImageOptions to properly handle image removal
+    let options = Some(bollard::image::RemoveImageOptions {
+        force: false,
+        noprune: false,
+    });
 
-    Ok(format!("Image {} removed successfully", image_id))
+    let result = docker
+        .remove_image(&image_id, options, None)
+        .await
+        .map_err(|e| {
+            let error_msg = format!("Failed to remove image: {}", e);
+            // Check if it's a dependency error and suggest force removal
+            if error_msg.contains("conflict") || error_msg.contains("being used") {
+                format!("{}\n\nTip: The image might be in use by a container. Stop and remove dependent containers first, or use force removal.", error_msg)
+            } else {
+                error_msg
+            }
+        })?;
+
+    // The result is a vector of removal results
+    let removed_count = result.len();
+    
+    if removed_count > 0 {
+        Ok(format!("Image {} removed successfully ({} layers removed)", image_id, removed_count))
+    } else {
+        Ok(format!("Image {} removed successfully", image_id))
+    }
+}
+
+#[tauri::command]
+async fn force_remove_image(image_id: String) -> Result<String, String> {
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    // Use force removal for stubborn images
+    let options = Some(bollard::image::RemoveImageOptions {
+        force: true,
+        noprune: false,
+    });
+
+    let result = docker
+        .remove_image(&image_id, options, None)
+        .await
+        .map_err(|e| format!("Failed to force remove image: {}", e))?;
+
+    let removed_count = result.len();
+    
+    if removed_count > 0 {
+        Ok(format!("Image {} force removed successfully ({} layers removed)", image_id, removed_count))
+    } else {
+        Ok(format!("Image {} force removed successfully", image_id))
+    }
 }
 
 #[tauri::command]
@@ -688,7 +734,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet, 
             list_containers, start_container, stop_container, restart_container, remove_container, pause_container, unpause_container,
-            list_images, remove_image,
+            list_images, remove_image, force_remove_image,
             list_volumes, remove_volume,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
