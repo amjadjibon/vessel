@@ -2,15 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ContainerInfo, ContainerStats, ContainerProject } from '../types/docker';
 
+interface ColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+  className?: string;
+}
+
 interface ContainerRowProps {
   container: ContainerInfo;
   containerStats?: ContainerStats;
   isSelected: boolean;
   onToggleSelection: () => void;
   onUpdate: () => void;
+  visibleColumns: ColumnConfig[];
+  allColumns: ColumnConfig[];
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
@@ -71,7 +80,66 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
     return `${(reads / (1024 * 1024 * 1024)).toFixed(1)}GB`;
   };
 
+  const formatCreated = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - (timestamp * 1000);
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor(diff / (1000 * 60));
+
+    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    return 'Just now';
+  };
+
   const isRunning = container.state.toLowerCase() === 'running';
+
+  const getColumnValue = (columnId: string) => {
+    switch (columnId) {
+      case 'name':
+        return (
+          <div className="container-name">
+            <span className="name">{container.service || container.name}</span>
+            {container.service && (
+              <div className="service-info">
+                <small className="container-full-name">{container.name}</small>
+              </div>
+            )}
+          </div>
+        );
+      case 'containerId':
+        return <code className="container-id">{container.id.substring(0, 12)}</code>;
+      case 'image':
+        return <span className="image-name">{container.image}</span>;
+      case 'ports':
+        return <span className="ports">{formatPorts(container.ports)}</span>;
+      case 'cpu':
+        return containerStats && isRunning ? `${containerStats.cpu_percentage.toFixed(1)}%` : 
+               isRunning ? 'N/A' : 'N/A';
+      case 'memoryUsage':
+        return containerStats && isRunning ? 
+               `${formatMemoryUsage(containerStats.memory_usage)} / ${formatMemoryUsage(containerStats.memory_limit)}` : 
+               isRunning ? 'N/A' : 'N/A';
+      case 'memoryPercent':
+        return containerStats && isRunning ? `${containerStats.memory_percentage.toFixed(1)}%` : 
+               isRunning ? 'N/A' : 'N/A';
+      case 'diskReads':
+        return containerStats && isRunning ? 
+               `${formatDiskReads(containerStats.block_read)} / ${formatDiskReads(containerStats.block_write)}` : 
+               isRunning ? 'N/A' : 'N/A';
+      case 'networkIO':
+        return containerStats && isRunning ? 
+               `${formatDiskReads(containerStats.network_rx)} / ${formatDiskReads(containerStats.network_tx)}` : 
+               isRunning ? 'N/A' : 'N/A';
+      case 'pids':
+        return containerStats && isRunning ? 'N/A' : 'N/A'; // PIDS not available in current stats
+      case 'lastStarted':
+        return formatCreated(container.created);
+      default:
+        return null;
+    }
+  };
 
   return (
     <tr className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''}`}>
@@ -85,41 +153,19 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
       <td className="status-col">
         {getStatusIcon(container.state)}
       </td>
+      {/* Always show Name and Image first */}
       <td className="name-col">
-        <div className="container-name">
-          <span className="name">{container.service || container.name}</span>
-          {container.service && (
-            <div className="service-info">
-              <small className="container-full-name">{container.name}</small>
-            </div>
-          )}
-        </div>
-      </td>
-      <td className="container-id-col">
-        <code className="container-id">{container.id.substring(0, 12)}</code>
+        {getColumnValue('name')}
       </td>
       <td className="image-col">
-        <span className="image-name">{container.image}</span>
+        {getColumnValue('image')}
       </td>
-      <td className="ports-col">
-        <span className="ports">{formatPorts(container.ports)}</span>
-      </td>
-      <td className="cpu-col">
-        {containerStats && isRunning ? `${containerStats.cpu_percentage.toFixed(1)}%` : 
-         isRunning ? 'N/A' : 'N/A'}
-      </td>
-      <td className="memory-usage-col">
-        {containerStats && isRunning ? formatMemoryUsage(containerStats.memory_usage) : 
-         isRunning ? 'N/A' : 'N/A'}
-      </td>
-      <td className="memory-percent-col">
-        {containerStats && isRunning ? `${containerStats.memory_percentage.toFixed(1)}%` : 
-         isRunning ? 'N/A' : 'N/A'}
-      </td>
-      <td className="disk-reads-col">
-        {containerStats && isRunning ? formatDiskReads(containerStats.block_read) : 
-         isRunning ? 'N/A' : 'N/A'}
-      </td>
+      {/* Then show configurable columns */}
+      {allColumns.filter(column => !['name', 'image'].includes(column.id) && column.visible).map(column => (
+        <td key={column.id} className={column.className || `${column.id}-col`}>
+          {getColumnValue(column.id)}
+        </td>
+      ))}
       <td className="actions-col">
         <div className="action-buttons">
           {isRunning ? (
@@ -169,6 +215,7 @@ interface ProjectHeaderProps {
   onToggleExpansion: () => void;
   onToggleSelection: () => void;
   onProjectAction: (projectName: string, action: 'start' | 'stop' | 'restart') => void;
+  visibleColumns: ColumnConfig[];
 }
 
 const ProjectHeader: React.FC<ProjectHeaderProps> = ({ 
@@ -176,7 +223,8 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   selectedContainers, 
   onToggleExpansion, 
   onToggleSelection,
-  onProjectAction 
+  onProjectAction,
+  visibleColumns
 }) => {
   const containerIds = project.containers.map(c => c.id);
   const allSelected = containerIds.length > 0 && containerIds.every(id => selectedContainers.has(id));
@@ -184,6 +232,8 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   
   const runningContainers = project.containers.filter(c => c.state.toLowerCase() === 'running').length;
   const totalContainers = project.containers.length;
+
+  const visibleColumnCount = 2 + visibleColumns.filter(col => !['name', 'image'].includes(col.id) && col.visible).length; // 2 for Name and Image
 
   return (
     <tr className="project-header">
@@ -206,7 +256,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           {project.isExpanded ? '▼' : '▶'}
         </button>
       </td>
-      <td colSpan={8} className="project-info-col">
+      <td colSpan={visibleColumnCount} className="project-info-col">
         <div className="project-info">
           <strong className="project-name">{project.name}</strong>
           <span className="project-stats">
@@ -252,6 +302,21 @@ const ContainerList: React.FC = () => {
   const [selectedContainers, setSelectedContainers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyRunning, setShowOnlyRunning] = useState(false);
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+  const [columns, setColumns] = useState<ColumnConfig[]>([
+    { id: 'name', label: 'Name', visible: true, className: 'name-col' },
+    { id: 'image', label: 'Image', visible: true, className: 'image-col' },
+    { id: 'containerId', label: 'Container ID', visible: true, className: 'container-id-col' },
+    { id: 'ports', label: 'Port(s)', visible: true, className: 'ports-col' },
+    { id: 'cpu', label: 'CPU (%)', visible: true, className: 'cpu-col' },
+    { id: 'memoryUsage', label: 'Memory usage/limit', visible: true, className: 'memory-usage-col' },
+    { id: 'memoryPercent', label: 'Memory (%)', visible: true, className: 'memory-percent-col' },
+    { id: 'diskReads', label: 'Disk read/write', visible: true, className: 'disk-reads-col' },
+    { id: 'networkIO', label: 'Network I/O', visible: false, className: 'network-io-col' },
+    { id: 'pids', label: 'PIDS', visible: false, className: 'pids-col' },
+    { id: 'lastStarted', label: 'Last started', visible: false, className: 'last-started-col' },
+  ]);
 
   const groupContainersByProject = (containers: ContainerInfo[]): ContainerProject[] => {
     const projectMap = new Map<string, ContainerInfo[]>();
@@ -326,6 +391,19 @@ const ContainerList: React.FC = () => {
     }
   }, [containers]);
 
+  // Close column selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showColumnSelector && !target.closest('.column-selector-container')) {
+        setShowColumnSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnSelector]);
+
   const toggleProjectExpansion = (projectName: string) => {
     setProjects(prevProjects =>
       prevProjects.map(project =>
@@ -385,6 +463,26 @@ const ContainerList: React.FC = () => {
     });
   };
 
+  const toggleColumnVisibility = (columnId: string) => {
+    setColumns(prevColumns =>
+      prevColumns.map(col =>
+        col.id === columnId ? { ...col, visible: !col.visible } : col
+      )
+    );
+  };
+
+  const showAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: true }))
+    );
+  };
+
+  const hideAllColumns = () => {
+    setColumns(prevColumns =>
+      prevColumns.map(col => ({ ...col, visible: false }))
+    );
+  };
+
   const filteredProjects = projects.map(project => ({
     ...project,
     containers: project.containers.filter(container => {
@@ -412,6 +510,8 @@ const ContainerList: React.FC = () => {
   });
 
   const totalFilteredContainers = filteredProjects.reduce((sum, project) => sum + project.containers.length, 0) + individualContainers.length;
+
+  const visibleColumns = columns.filter(col => col.visible);
 
   if (loading) {
     return (
@@ -453,6 +553,42 @@ const ContainerList: React.FC = () => {
                 className="search-input"
               />
             </div>
+            <div className="column-selector-container">
+              <button
+                onClick={() => setShowColumnSelector(!showColumnSelector)}
+                className="column-selector-button"
+                title="Configure columns"
+              >
+                ⚙️
+              </button>
+              {showColumnSelector && (
+                <div className="column-selector-dropdown">
+                  <div className="column-selector-header">
+                    <span>Columns</span>
+                  </div>
+                  <div className="column-selector-list">
+                    {columns.filter(column => !['name', 'image'].includes(column.id)).map(column => (
+                      <label key={column.id} className="column-selector-item">
+                        <input
+                          type="checkbox"
+                          checked={column.visible}
+                          onChange={() => toggleColumnVisibility(column.id)}
+                        />
+                        <span className="column-label">{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="column-selector-actions">
+                    <button onClick={hideAllColumns} className="column-action-button">
+                      Hide all
+                    </button>
+                    <button onClick={showAllColumns} className="column-action-button">
+                      Show all
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="filter-container">
               <label className="filter-checkbox">
                 <input
@@ -475,83 +611,87 @@ const ContainerList: React.FC = () => {
           <thead>
             <tr>
               <th className="checkbox-col">
-                                  <input 
-                    type="checkbox" 
-                    checked={selectedContainers.size > 0 && selectedContainers.size === totalFilteredContainers}
-                    onChange={() => {
-                      if (selectedContainers.size === totalFilteredContainers) {
-                        setSelectedContainers(new Set());
-                      } else {
-                        const projectIds = filteredProjects.flatMap(project => project.containers.map(c => c.id));
-                        const individualIds = individualContainers.map(c => c.id);
-                        const allIds = [...projectIds, ...individualIds];
-                        setSelectedContainers(new Set(allIds));
-                      }
-                    }}
+                <input 
+                  type="checkbox" 
+                  checked={selectedContainers.size > 0 && selectedContainers.size === totalFilteredContainers}
+                  onChange={() => {
+                    if (selectedContainers.size === totalFilteredContainers) {
+                      setSelectedContainers(new Set());
+                    } else {
+                      const projectIds = filteredProjects.flatMap(project => project.containers.map(c => c.id));
+                      const individualIds = individualContainers.map(c => c.id);
+                      const allIds = [...projectIds, ...individualIds];
+                      setSelectedContainers(new Set(allIds));
+                    }
+                  }}
                 />
               </th>
               <th className="status-col"></th>
-              <th>Name</th>
-              <th>Container ID</th>
-              <th>Image</th>
-              <th>Port(s)</th>
-              <th>CPU (%)</th>
-              <th>Memory usage</th>
-              <th>Memory (%)</th>
-              <th>Disk reads</th>
+              <th className="name-col">Name</th>
+              <th className="image-col">Image</th>
+              {columns.filter(column => !['name', 'image'].includes(column.id) && column.visible).map(column => (
+                <th key={column.id} className={column.className}>
+                  {column.label}
+                </th>
+              ))}
               <th className="actions-col">Actions</th>
             </tr>
           </thead>
-                      <tbody>
-              {filteredProjects.length === 0 && individualContainers.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="empty-row">
-                    <div className="empty-state">
-                      <h3>No containers found</h3>
-                      <p>
-                        {searchTerm || showOnlyRunning 
-                          ? 'No containers match your search criteria.' 
-                          : 'No Docker containers are available on this system.'}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {filteredProjects.map((project) => (
-                    <React.Fragment key={project.name}>
-                      <ProjectHeader 
-                        project={project}
-                        selectedContainers={selectedContainers}
-                        onToggleExpansion={() => toggleProjectExpansion(project.name)}
-                        onToggleSelection={() => toggleProjectSelection(project.name)}
-                        onProjectAction={handleProjectAction}
-                      />
-                      {project.isExpanded && project.containers.map((container) => (
-                        <ContainerRow
-                          key={container.id}
-                          container={container}
-                          containerStats={containerStats.get(container.id)}
-                          isSelected={selectedContainers.has(container.id)}
-                          onToggleSelection={() => toggleContainerSelection(container.id)}
-                          onUpdate={loadContainers}
-                        />
-                      ))}
-                    </React.Fragment>
-                  ))}
-                  {individualContainers.map((container) => (
-                    <ContainerRow
-                      key={container.id}
-                      container={container}
-                      containerStats={containerStats.get(container.id)}
-                      isSelected={selectedContainers.has(container.id)}
-                      onToggleSelection={() => toggleContainerSelection(container.id)}
-                      onUpdate={loadContainers}
+          <tbody>
+            {filteredProjects.length === 0 && individualContainers.length === 0 ? (
+              <tr>
+                <td colSpan={2 + columns.filter(col => !['name', 'image'].includes(col.id) && col.visible).length + 3} className="empty-row">
+                  <div className="empty-state">
+                    <h3>No containers found</h3>
+                    <p>
+                      {searchTerm || showOnlyRunning 
+                        ? 'No containers match your search criteria.' 
+                        : 'No Docker containers are available on this system.'}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <>
+                {filteredProjects.map((project) => (
+                  <React.Fragment key={project.name}>
+                    <ProjectHeader 
+                      project={project}
+                      selectedContainers={selectedContainers}
+                      onToggleExpansion={() => toggleProjectExpansion(project.name)}
+                      onToggleSelection={() => toggleProjectSelection(project.name)}
+                      onProjectAction={handleProjectAction}
+                      visibleColumns={visibleColumns}
                     />
-                  ))}
-                </>
-              )}
-            </tbody>
+                    {project.isExpanded && project.containers.map((container) => (
+                      <ContainerRow
+                        key={container.id}
+                        container={container}
+                        containerStats={containerStats.get(container.id)}
+                        isSelected={selectedContainers.has(container.id)}
+                        onToggleSelection={() => toggleContainerSelection(container.id)}
+                        onUpdate={loadContainers}
+                        visibleColumns={visibleColumns}
+                        allColumns={columns}
+                      />
+                    ))}
+                  </React.Fragment>
+                ))}
+                {individualContainers.map((container) => (
+                  <ContainerRow
+                    key={container.id}
+                    container={container}
+                    containerStats={containerStats.get(container.id)}
+                    isSelected={selectedContainers.has(container.id)}
+                    onToggleSelection={() => toggleContainerSelection(container.id)}
+                    onUpdate={loadContainers}
+                    visibleColumns={visibleColumns}
+                    allColumns={columns}
+                  />
+                ))}
+              </>
+            )}
+          </tbody>
         </table>
       </div>
     </div>

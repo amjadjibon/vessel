@@ -277,6 +277,124 @@ body {
   color: #424242;
 }
 
+/* Column Selector */
+.column-selector-container {
+  position: relative;
+  display: inline-block;
+}
+
+.column-selector-button {
+  background: none;
+  border: 1px solid #e0e0e0;
+  color: #757575;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.column-selector-button:hover {
+  background-color: #f5f5f5;
+  border-color: #d0d0d0;
+  color: #424242;
+}
+
+.column-selector-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  z-index: 1000;
+  margin-top: 4px;
+}
+
+.column-selector-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #212121;
+}
+
+.column-selector-list {
+  padding: 8px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.column-selector-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  user-select: none;
+}
+
+.column-selector-item:hover {
+  background-color: #f8f9fa;
+}
+
+.column-selector-item input[type="checkbox"] {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.column-label {
+  font-size: 14px;
+  color: #212121;
+  flex: 1;
+}
+
+.column-selector-actions {
+  padding: 8px 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  gap: 8px;
+}
+
+.column-action-button {
+  background: none;
+  border: none;
+  color: #4A90E2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.column-action-button:hover {
+  background-color: #f0f7ff;
+}
+
+/* Additional column styles */
+.data-table .last-started-col {
+  width: 120px;
+  text-align: left;
+}
+
+.data-table .network-io-col {
+  width: 120px;
+  text-align: right;
+}
+
+.data-table .pids-col {
+  width: 80px;
+  text-align: right;
+}
+
 .sidebar-nav {
   padding: 8px 0;
 }
@@ -504,9 +622,66 @@ body {
 .table-container {
   background-color: white;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   border: 1px solid #e0e0e0;
+  position: relative;
+}
+
+/* Responsive table design */
+@media (max-width: 1200px) {
+  .table-container {
+    overflow-x: auto;
+  }
+  
+  .data-table {
+    min-width: 1000px;
+  }
+  
+  /* Fix Name and Actions columns */
+  .data-table .name-col {
+    position: sticky;
+    left: 80px; /* checkbox + status width */
+    background-color: white;
+    z-index: 2;
+    border-right: 1px solid #e0e0e0;
+  }
+  
+  .data-table .actions-col {
+    position: sticky;
+    right: 0;
+    background-color: white;
+    z-index: 2;
+    border-left: 1px solid #e0e0e0;
+  }
+  
+  /* Ensure checkbox and status remain visible */
+  .data-table .checkbox-col {
+    position: sticky;
+    left: 0;
+    background-color: white;
+    z-index: 3;
+  }
+  
+  .data-table .status-col {
+    position: sticky;
+    left: 40px; /* checkbox width */
+    background-color: white;
+    z-index: 3;
+  }
+  
+  /* Project header adjustments */
+  .project-header .checkbox-col,
+  .project-header .status-col,
+  .project-header .name-col,
+  .project-header .actions-col {
+    background-color: #f8f9fa;
+  }
+  
+  /* Ensure project info spans correctly with sticky columns */
+  .project-header .project-info-col {
+    background-color: #f8f9fa;
+  }
 }
 
 .data-table {
