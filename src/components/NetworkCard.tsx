@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NetworkInfo } from '../types/docker';
+import { Trash2 } from 'lucide-react';
 
 interface NetworkCardProps {
   network: NetworkInfo;
@@ -61,7 +62,7 @@ const NetworkCard: React.FC<NetworkCardProps> = ({ network, onUpdate }) => {
             className="action-button remove"
             title={isSystemNetwork ? 'Cannot remove system networks' : 'Remove network'}
           >
-            🗑️ Remove
+            <Trash2 className="action-icon" /> Remove
           </button>
         </div>
       </div>

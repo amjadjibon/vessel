@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ContainerInfo } from '../types/docker';
+import { Play, Square, RotateCcw } from 'lucide-react';
 
 interface ContainerCardProps {
   container: ContainerInfo;
@@ -68,21 +69,21 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container, onUpdate }) =>
             disabled={isLoading || container.state === 'running'}
             className="action-button start"
           >
-            ▶️ Start
+            <Play className="action-icon" /> Start
           </button>
           <button 
             onClick={() => handleAction('stop')}
             disabled={isLoading || container.state !== 'running'}
             className="action-button stop"
           >
-            ⏹️ Stop
+            <Square className="action-icon" /> Stop
           </button>
           <button 
             onClick={() => handleAction('restart')}
             disabled={isLoading}
             className="action-button restart"
           >
-            🔄 Restart
+            <RotateCcw className="action-icon" /> Restart
           </button>
         </div>
       </div>

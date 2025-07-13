@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TerminalOutput, TerminalEntry, TerminalSession } from '../types/docker';
+import { 
+  Trash2, 
+  Edit3, 
+  Terminal as TerminalIcon,
+  Plus,
+  X
+} from 'lucide-react';
 
 const Terminal: React.FC = () => {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
@@ -382,7 +389,7 @@ const Terminal: React.FC = () => {
                     }}
                     title="Close tab"
                   >
-                    ×
+                    <X className="tab-close-icon" />
                   </button>
                 )}
               </div>
@@ -392,7 +399,7 @@ const Terminal: React.FC = () => {
               onClick={addNewSession}
               title="New terminal tab"
             >
-              +
+              <Plus className="new-tab-icon" />
             </button>
           </div>
         </div>
@@ -419,7 +426,7 @@ const Terminal: React.FC = () => {
               className="clear-button"
               title="Clear terminal"
             >
-              <span>🗑️</span>
+              <Trash2 className="clear-icon" />
               Clear
             </button>
             <button 
@@ -427,7 +434,7 @@ const Terminal: React.FC = () => {
               className="focus-button"
               title="Focus terminal"
             >
-              <span>📝</span>
+              <TerminalIcon className="focus-icon" />
               Focus
             </button>
           </div>
@@ -439,7 +446,7 @@ const Terminal: React.FC = () => {
         <div className="terminal-content" ref={terminalRef}>
           {activeSession && activeSession.entries.length === 0 && (
             <div className="terminal-welcome">
-              <p className="welcome-title">🖥️ Vessel Terminal</p>
+                              <p className="welcome-title"><TerminalIcon className="welcome-icon" /> Vessel Terminal</p>
               <p>Interactive terminal with Docker command support</p>
               <p>Type commands below. Use arrow keys for history navigation.</p>
               <p>Current directory: <code>{activeSession.currentDirectory}</code></p>

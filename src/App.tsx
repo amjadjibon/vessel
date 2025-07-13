@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import ContainerList from "./components/ContainerList";
 import ImageList from "./components/ImageList";
@@ -6,13 +6,28 @@ import VolumeList from "./components/VolumeList";
 import NetworkList from "./components/NetworkList";
 import Terminal from "./components/Terminal";
 import { SystemStats, DockerSystemInfo } from './types/docker';
+import { 
+  Container, 
+  HardDrive, 
+  Database, 
+  Network, 
+  Terminal as TerminalIcon,
+  Menu,
+  X,
+  Search,
+  Bell,
+  HelpCircle,
+  Settings,
+  Smartphone,
+  RefreshCw
+} from 'lucide-react';
 import "./App.css";
 
 type ActivePage = 'containers' | 'images' | 'volumes' | 'networks' | 'terminal';
 
 interface NavigationItem {
   key: ActivePage;
-  icon: string;
+  icon: React.ComponentType<any>;
   label: string;
   badge?: string;
   page?: string;
@@ -25,11 +40,11 @@ function App() {
   const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
 
   const navigationItems: NavigationItem[] = [
-    { key: 'containers', icon: '📦', label: 'Containers', page: 'containers' },
-    { key: 'images', icon: '💿', label: 'Images', page: 'images' },
-    { key: 'volumes', icon: '💾', label: 'Volumes', page: 'volumes' },
-    { key: 'networks', icon: '🌐', label: 'Networks' },
-    { key: 'terminal', icon: '🖥️', label: 'Terminal' },
+    { key: 'containers', icon: Container, label: 'Containers', page: 'containers' },
+    { key: 'images', icon: HardDrive, label: 'Images', page: 'images' },
+    { key: 'volumes', icon: Database, label: 'Volumes', page: 'volumes' },
+    { key: 'networks', icon: Network, label: 'Networks' },
+    { key: 'terminal', icon: TerminalIcon, label: 'Terminal' },
   ];
 
   useEffect(() => {
@@ -103,7 +118,7 @@ function App() {
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {sidebarCollapsed ? '→' : '←'}
+            {sidebarCollapsed ? <Menu size={20} /> : <X size={20} />}
           </button>
           <div className="logo">
             <span className="logo-text">vessel</span>
@@ -112,16 +127,16 @@ function App() {
         </div>
         <div className="header-center">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><Search size={16} /></span>
             <input type="text" placeholder="Search" className="search-input" />
             <span className="search-shortcut">⌘K</span>
           </div>
         </div>
         <div className="header-right">
-          <button className="header-button" title="Notifications">🔔</button>
-          <button className="header-button" title="Help">❓</button>
-          <button className="header-button" title="Settings">⚙️</button>
-          <button className="header-button" title="Apps">📱</button>
+          <button className="header-button" title="Notifications"><Bell size={16} /></button>
+          <button className="header-button" title="Help"><HelpCircle size={16} /></button>
+          <button className="header-button" title="Settings"><Settings size={16} /></button>
+          <button className="header-button" title="Apps"><Smartphone size={16} /></button>
           <button className="sign-in-button">Sign in</button>
         </div>
       </header>
@@ -137,7 +152,7 @@ function App() {
                 onClick={() => handleNavigation(item.key)}
                 title={sidebarCollapsed ? item.label : undefined}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon">{React.createElement(item.icon, { size: 20 })}</span>
                 {!sidebarCollapsed && (
                   <>
                     <span className="nav-label">{item.label}</span>
@@ -176,9 +191,9 @@ function App() {
         </div>
         <div className="footer-right">
           <button className="footer-button" onClick={() => setActivePage('terminal')}>
-            🖥️ Terminal
+            <TerminalIcon size={16} /> Terminal
           </button>
-          <button className="footer-button">🔄 Update</button>
+          <button className="footer-button"><RefreshCw size={16} /> Update</button>
         </div>
       </footer>
     </div>

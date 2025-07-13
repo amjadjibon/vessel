@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ImageInfo } from '../types/docker';
+import { 
+  Trash2, 
+  Settings, 
+  RefreshCw
+} from 'lucide-react';
 
 interface ColumnConfig {
   id: string;
@@ -151,7 +156,7 @@ const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelectio
             className="action-button remove"
             title="Remove image"
           >
-            🗑️
+            <Trash2 className="action-icon" />
           </button>
         </div>
       </td>
@@ -271,7 +276,7 @@ const ImageList: React.FC = () => {
           <h3>Failed to load images</h3>
           <p>{error}</p>
           <button onClick={loadImages} className="retry-button">
-            🔄 Retry
+            <RefreshCw className="retry-icon" />
           </button>
         </div>
       </div>
@@ -318,7 +323,7 @@ const ImageList: React.FC = () => {
                 className="column-selector-button"
                 title="Configure columns"
               >
-                ⚙️
+                <Settings className="column-selector-icon" />
               </button>
               {showColumnSelector && (
                 <div className="column-selector-dropdown">
@@ -350,7 +355,7 @@ const ImageList: React.FC = () => {
             </div>
           </div>
           <button onClick={loadImages} className="refresh-button">
-            🔄 Refresh
+            <RefreshCw className="refresh-icon" />
           </button>
         </div>
       </div>

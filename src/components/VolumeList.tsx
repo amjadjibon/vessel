@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { VolumeInfo } from '../types/docker';
+import { 
+  Trash2, 
+  Settings, 
+  RefreshCw,
+  Copy,
+  Plus
+} from 'lucide-react';
 
 interface ColumnConfig {
   id: string;
@@ -107,7 +114,7 @@ const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelec
             title="Copy volume name"
             onClick={() => navigator.clipboard.writeText(volume.name)}
           >
-            📋
+            <Copy className="icon" />
           </button>
           <button
             onClick={handleRemove}
@@ -115,7 +122,7 @@ const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelec
             className="action-button remove"
             title="Remove volume"
           >
-            🗑️
+            <Trash2 className="icon" />
           </button>
         </div>
       </td>
@@ -225,7 +232,7 @@ const VolumeList: React.FC = () => {
           <h3>Failed to load volumes</h3>
           <p>{error}</p>
           <button onClick={loadVolumes} className="retry-button">
-            🔄 Retry
+            <RefreshCw className="icon" /> Retry
           </button>
         </div>
       </div>
@@ -255,7 +262,7 @@ const VolumeList: React.FC = () => {
                 className="column-selector-button"
                 title="Configure columns"
               >
-                ⚙️
+                <Settings className="icon" />
               </button>
               {showColumnSelector && (
                 <div className="column-selector-dropdown">
@@ -288,10 +295,10 @@ const VolumeList: React.FC = () => {
           </div>
           <div className="header-actions">
             <button onClick={loadVolumes} className="refresh-button">
-              🔄 Refresh
+              <RefreshCw className="icon" /> Refresh
             </button>
             <button className="create-button">
-              Create
+              <Plus className="icon" /> Create
             </button>
           </div>
         </div>

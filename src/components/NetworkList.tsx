@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NetworkInfo } from '../types/docker';
+import { 
+  Trash2, 
+  Settings, 
+  RefreshCw,
+  Copy,
+  Plus
+} from 'lucide-react';
 
 interface ColumnConfig {
   id: string;
@@ -127,7 +134,7 @@ const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSe
             title="Copy network ID"
             onClick={() => navigator.clipboard.writeText(network.id)}
           >
-            📋
+            <Copy className="icon" />
           </button>
           <button
             onClick={handleRemove}
@@ -135,7 +142,7 @@ const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSe
             className="action-button remove"
             title={isSystemNetwork ? "Cannot remove system networks" : "Remove network"}
           >
-            🗑️
+            <Trash2 className="icon" />
           </button>
         </div>
       </td>
@@ -255,7 +262,7 @@ const NetworkList: React.FC = () => {
           <h3>Failed to load networks</h3>
           <p>{error}</p>
           <button onClick={loadNetworks} className="retry-button">
-            🔄 Retry
+            <RefreshCw className="icon" /> Retry
           </button>
         </div>
       </div>
@@ -285,7 +292,7 @@ const NetworkList: React.FC = () => {
                 className="column-selector-button"
                 title="Configure columns"
               >
-                ⚙️
+                <Settings className="icon" />
               </button>
               {showColumnSelector && (
                 <div className="column-selector-dropdown">
@@ -318,10 +325,10 @@ const NetworkList: React.FC = () => {
           </div>
           <div className="header-actions">
             <button onClick={loadNetworks} className="refresh-button">
-              🔄 Refresh
+              <RefreshCw className="icon" /> Refresh
             </button>
             <button className="create-button">
-              Create
+              <Plus className="icon" /> Create
             </button>
           </div>
         </div>

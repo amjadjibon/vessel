@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { VolumeInfo } from '../types/docker';
+import { Trash2 } from 'lucide-react';
 
 interface VolumeCardProps {
   volume: VolumeInfo;
@@ -49,7 +50,7 @@ const VolumeCard: React.FC<VolumeCardProps> = ({ volume, onUpdate }) => {
             disabled={isLoading}
             className="action-button remove"
           >
-            🗑️ Remove
+            <Trash2 className="action-icon" /> Remove
           </button>
         </div>
       </div>

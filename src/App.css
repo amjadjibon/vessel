@@ -1819,3 +1819,150 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 400;
   color: var(--text-secondary);
 }
+
+/* Lucide React Icons Styling */
+.action-icon,
+.retry-icon,
+.refresh-icon,
+.column-selector-icon,
+.icon,
+.expand-icon,
+.tab-close-icon,
+.new-tab-icon,
+.clear-icon,
+.focus-icon,
+.welcome-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.nav-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.sidebar-toggle svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.header-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+.search-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+.expand-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+.tab-close-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.new-tab-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+.clear-icon,
+.focus-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  margin-right: 4px;
+}
+
+.welcome-icon {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+  margin-right: 8px;
+}
+
+/* Refresh and Retry button styling */
+.refresh-button,
+.retry-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.create-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.action-button:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.action-button.remove:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+}
+
+.action-button.copy:hover {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #2196f3;
+}
+
+/* Footer Button Styling */
+.footer-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.footer-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.footer-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}

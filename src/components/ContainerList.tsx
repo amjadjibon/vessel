@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ContainerInfo, ContainerStats, ContainerProject } from '../types/docker';
+import { 
+  Play, 
+  Square, 
+  RotateCcw, 
+  Trash2, 
+  Settings, 
+  RefreshCw, 
+  Search,
+  ChevronDown,
+  ChevronRight
+} from 'lucide-react';
 
 interface ColumnConfig {
   id: string;
@@ -175,7 +186,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
               className="action-button stop"
               title="Stop container"
             >
-              ⏹️
+              <Square className="action-icon" />
             </button>
           ) : (
             <button
@@ -184,7 +195,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
               className="action-button start"
               title="Start container"
             >
-              ▶️
+              <Play className="action-icon" />
             </button>
           )}
           <button
@@ -193,7 +204,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
             className="action-button restart"
             title="Restart container"
           >
-            🔄
+            <RotateCcw className="action-icon" />
           </button>
           <button
             onClick={() => handleAction('remove')}
@@ -201,7 +212,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
             className="action-button remove"
             title="Remove container"
           >
-            🗑️
+            <Trash2 className="action-icon" />
           </button>
         </div>
       </td>
@@ -253,7 +264,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           onClick={onToggleExpansion}
           title={project.isExpanded ? "Collapse" : "Expand"}
         >
-          {project.isExpanded ? '▼' : '▶'}
+          {project.isExpanded ? <ChevronDown className="expand-icon" /> : <ChevronRight className="expand-icon" />}
         </button>
       </td>
       <td colSpan={visibleColumnCount} className="project-info-col">
@@ -271,21 +282,21 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
             className="action-button start"
             title="Start all containers"
           >
-            ▶️
+            <Play className="action-icon" />
           </button>
           <button
             onClick={() => onProjectAction(project.name, 'stop')}
             className="action-button stop"
             title="Stop all containers"
           >
-            ⏹️
+            <Square className="action-icon" />
           </button>
           <button
             onClick={() => onProjectAction(project.name, 'restart')}
             className="action-button restart"
             title="Restart all containers"
           >
-            🔄
+            <RotateCcw className="action-icon" />
           </button>
         </div>
       </td>
@@ -529,7 +540,7 @@ const ContainerList: React.FC = () => {
           <h3>Failed to load containers</h3>
           <p>{error}</p>
           <button onClick={loadContainers} className="retry-button">
-            🔄 Retry
+            <RefreshCw className="retry-icon" />
           </button>
         </div>
       </div>
@@ -559,7 +570,7 @@ const ContainerList: React.FC = () => {
                 className="column-selector-button"
                 title="Configure columns"
               >
-                ⚙️
+                <Settings className="column-selector-icon" />
               </button>
               {showColumnSelector && (
                 <div className="column-selector-dropdown">
@@ -601,7 +612,7 @@ const ContainerList: React.FC = () => {
             </div>
           </div>
           <button onClick={loadContainers} className="refresh-button">
-            🔄 Refresh
+            <RefreshCw className="refresh-icon" />
           </button>
         </div>
       </div>

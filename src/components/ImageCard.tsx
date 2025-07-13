@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ImageInfo } from '../types/docker';
+import { Trash2 } from 'lucide-react';
 
 interface ImageCardProps {
   image: ImageInfo;
@@ -61,7 +62,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onUpdate }) => {
             disabled={isLoading}
             className="action-button remove"
           >
-            🗑️ Remove
+            <Trash2 className="action-icon" /> Remove
           </button>
         </div>
       </div>
