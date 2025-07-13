@@ -1,319 +1,165 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ContainerInfo, SystemStats, DockerSystemInfo, ContainerStats, ContainerProject } from '../types/docker';
+import { ContainerInfo, ContainerStats, ContainerProject } from '../types/docker';
 
-const ContainerList: React.FC = () => {
-  const [containers, setContainers] = useState<ContainerInfo[]>([]);
-  const [projects, setProjects] = useState<ContainerProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
-  const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
-  const [containerStats, setContainerStats] = useState<Map<string, ContainerStats>>(new Map());
-  const [selectedContainers, setSelectedContainers] = useState<Set<string>>(new Set());
+interface ContainerRowProps {
+  container: ContainerInfo;
+  containerStats?: ContainerStats;
+  isSelected: boolean;
+  onToggleSelection: () => void;
+  onUpdate: () => void;
+}
 
-  const groupContainersByProject = (containers: ContainerInfo[]): ContainerProject[] => {
-    const projectMap = new Map<string, ContainerInfo[]>();
-    
-    containers.forEach(container => {
-      const projectName = container.project || 'Individual Containers';
-      if (!projectMap.has(projectName)) {
-        projectMap.set(projectName, []);
-      }
-      projectMap.get(projectName)!.push(container);
-    });
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate }) => {
+  const [isLoading, setIsLoading] = useState(false);
 
-    return Array.from(projectMap.entries()).map(([name, containers]) => ({
-      name,
-      containers: containers.sort((a, b) => a.name.localeCompare(b.name)),
-      isExpanded: true,
-      isSelected: false,
-    })).sort((a, b) => {
-      // Put "Individual Containers" at the end
-      if (a.name === 'Individual Containers') return 1;
-      if (b.name === 'Individual Containers') return -1;
-      return a.name.localeCompare(b.name);
-    });
-  };
-
-  const loadContainers = async () => {
+  const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
+    setIsLoading(true);
     try {
-      setLoading(true);
-      setError(null);
-      const containerList = await invoke<ContainerInfo[]>('list_containers');
-      setContainers(containerList);
-      setProjects(groupContainersByProject(containerList));
-    } catch (err) {
-      setError(err as string);
-      console.error('Failed to load containers:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadSystemStats = async () => {
-    try {
-      const stats = await invoke<SystemStats>('get_system_stats');
-      setSystemStats(stats);
-      const info = await invoke<DockerSystemInfo>('get_docker_system_info');
-      setDockerInfo(info);
-    } catch (error) {
-      console.error('Failed to load system stats:', error);
-    }
-  };
-
-  const loadContainerStats = async () => {
-    try {
-      const runningContainers = containers.filter(c => c.state.toLowerCase() === 'running');
-      const statsMap = new Map<string, ContainerStats>();
+      let command = `${action}_container`;
+      let params: any = { containerId: container.id };
       
-      for (const container of runningContainers) {
-        try {
-          const stats = await invoke<ContainerStats>('get_container_stats', { containerId: container.id });
-          statsMap.set(container.id, stats);
-        } catch (error) {
-          console.error(`Failed to get stats for container ${container.id}:`, error);
+      if (action === 'remove') {
+        const confirmed = confirm(`Are you sure you want to remove container "${container.name}"?`);
+        if (!confirmed) {
+          setIsLoading(false);
+          return;
         }
+        params.force = container.state.toLowerCase() === 'running';
       }
       
-      setContainerStats(statsMap);
+      const result = await invoke<string>(command, params);
+      console.log(result);
+      onUpdate();
     } catch (error) {
-      console.error('Failed to load container stats:', error);
+      console.error(`Failed to ${action} container:`, error);
+      alert(`Failed to ${action} container: ${error}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadContainers();
-    loadSystemStats();
-  }, []);
-
-  useEffect(() => {
-    if (containers.length > 0) {
-      loadContainerStats();
-      
-      // Refresh stats every 3 seconds
-      const interval = setInterval(() => {
-        loadContainerStats();
-        loadSystemStats();
-      }, 3000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [containers]);
-
-  const toggleProjectExpansion = (projectName: string) => {
-    setProjects(prevProjects =>
-      prevProjects.map(project =>
-        project.name === projectName
-          ? { ...project, isExpanded: !project.isExpanded }
-          : project
-      )
-    );
-  };
-
-  const toggleProjectSelection = (projectName: string) => {
-    const project = projects.find(p => p.name === projectName);
-    if (!project) return;
-
-    const containerIds = project.containers.map(c => c.id);
-    
-    setSelectedContainers(prev => {
-      const newSelected = new Set(prev);
-      const allSelected = containerIds.every(id => newSelected.has(id));
-      
-      if (allSelected) {
-        // Deselect all containers in this project
-        containerIds.forEach(id => newSelected.delete(id));
-      } else {
-        // Select all containers in this project
-        containerIds.forEach(id => newSelected.add(id));
-      }
-      
-      return newSelected;
-    });
-  };
-
-  const toggleContainerSelection = (containerId: string) => {
-    setSelectedContainers(prev => {
-      const newSelected = new Set(prev);
-      if (newSelected.has(containerId)) {
-        newSelected.delete(containerId);
-      } else {
-        newSelected.add(containerId);
-      }
-      return newSelected;
-    });
-  };
-
-  const handleProjectAction = async (projectName: string, action: 'start' | 'stop' | 'restart') => {
-    const project = projects.find(p => p.name === projectName);
-    if (!project) return;
-
-    const promises = project.containers.map(container =>
-      invoke<string>(`${action}_container`, { containerId: container.id })
-        .catch(error => console.error(`Failed to ${action} container ${container.name}:`, error))
-    );
-
-    try {
-      await Promise.all(promises);
-      loadContainers(); // Refresh the list
-    } catch (error) {
-      console.error(`Failed to ${action} project containers:`, error);
-    }
-  };
-
-  if (loading) {
+  const getStatusIcon = (state: string) => {
+    const isRunning = state.toLowerCase() === 'running';
     return (
-      <div className="container-list loading">
-        <div className="loading-spinner"></div>
-        <p>Loading containers...</p>
+      <div className={`status-indicator ${isRunning ? 'running' : 'stopped'}`}>
+        <div className="status-dot"></div>
       </div>
     );
-  }
+  };
 
-  if (error) {
-    return (
-      <div className="container-list error">
-        <div className="error-message">
-          <h3>Failed to load containers</h3>
-          <p>{error}</p>
-          <button onClick={loadContainers} className="retry-button">
-            🔄 Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const formatPorts = (ports: typeof container.ports) => {
+    if (ports.length === 0) return '-';
+    return ports.map(port => 
+      port.public_port 
+        ? `${port.public_port}:${port.private_port}`
+        : `${port.private_port}`
+    ).join(', ');
+  };
 
-  if (containers.length === 0) {
-    return (
-      <div className="container-list empty">
-        <div className="empty-state">
-          <h3>No containers found</h3>
-          <p>No Docker containers are available on this system.</p>
-          <button onClick={loadContainers} className="refresh-button">
-            🔄 Refresh
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const formatMemoryUsage = (usage: number) => {
+    if (usage < 1024) return `${usage.toFixed(1)}B`;
+    if (usage < 1024 * 1024) return `${(usage / 1024).toFixed(1)}KB`;
+    if (usage < 1024 * 1024 * 1024) return `${(usage / (1024 * 1024)).toFixed(1)}MB`;
+    return `${(usage / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+  };
+
+  const formatDiskReads = (reads: number) => {
+    if (reads < 1024) return `${reads.toFixed(1)}B`;
+    if (reads < 1024 * 1024) return `${(reads / 1024).toFixed(1)}KB`;
+    if (reads < 1024 * 1024 * 1024) return `${(reads / (1024 * 1024)).toFixed(1)}MB`;
+    return `${(reads / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+  };
+
+  const isRunning = container.state.toLowerCase() === 'running';
 
   return (
-    <div className="container-list">
-      <div className="container-list-header">
-        <h2>Containers</h2>
-        <p className="page-subtitle">View all your running containers and applications.</p>
-        
-        {/* Stats Section */}
-        <div className="stats-section">
-          <div className="stat-item">
-            <span className="stat-label">Container CPU usage</span>
-            <span className="stat-value">
-              {systemStats ? `${systemStats.cpu_usage.toFixed(2)}%` : 'Loading...'}
-            </span>
-            <span className="stat-note">
-              ({systemStats ? `${systemStats.cpu_count} CPUs` : 'Loading...'} available)
-            </span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Container memory usage</span>
-            <span className="stat-value">
-              {systemStats ? `${systemStats.memory_used_gb.toFixed(2)}GB` : 'Loading...'}
-            </span>
-            <span className="stat-note">
-              of {systemStats ? `${systemStats.memory_total_gb.toFixed(2)}GB` : 'Loading...'}
-            </span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Total containers</span>
-            <span className="stat-value">
-              {dockerInfo ? dockerInfo.containers_total : containers.length}
-            </span>
-            <span className="stat-note">
-              {dockerInfo ? `${dockerInfo.containers_running} running, ${dockerInfo.containers_stopped} stopped` : 'loading...'}
-            </span>
-          </div>
+    <tr className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''}`}>
+      <td className="checkbox-col">
+        <input 
+          type="checkbox" 
+          checked={isSelected}
+          onChange={onToggleSelection}
+        />
+      </td>
+      <td className="status-col">
+        {getStatusIcon(container.state)}
+      </td>
+      <td className="name-col">
+        <div className="container-name">
+          <span className="name">{container.service || container.name}</span>
+          {container.service && (
+            <div className="service-info">
+              <small className="container-full-name">{container.name}</small>
+            </div>
+          )}
         </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <input 
-              type="text" 
-              placeholder="Search containers..." 
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                width: '300px'
-              }}
-            />
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#757575' }}>
-              <input type="checkbox" defaultChecked />
-              Only show running containers
-            </label>
-          </div>
-          <button onClick={loadContainers} className="refresh-button">
-            🔄 Refresh
+      </td>
+      <td className="container-id-col">
+        <code className="container-id">{container.id.substring(0, 12)}</code>
+      </td>
+      <td className="image-col">
+        <span className="image-name">{container.image}</span>
+      </td>
+      <td className="ports-col">
+        <span className="ports">{formatPorts(container.ports)}</span>
+      </td>
+      <td className="cpu-col">
+        {containerStats && isRunning ? `${containerStats.cpu_percentage.toFixed(1)}%` : 
+         isRunning ? 'N/A' : 'N/A'}
+      </td>
+      <td className="memory-usage-col">
+        {containerStats && isRunning ? formatMemoryUsage(containerStats.memory_usage) : 
+         isRunning ? 'N/A' : 'N/A'}
+      </td>
+      <td className="memory-percent-col">
+        {containerStats && isRunning ? `${containerStats.memory_percentage.toFixed(1)}%` : 
+         isRunning ? 'N/A' : 'N/A'}
+      </td>
+      <td className="disk-reads-col">
+        {containerStats && isRunning ? formatDiskReads(containerStats.block_read) : 
+         isRunning ? 'N/A' : 'N/A'}
+      </td>
+      <td className="actions-col">
+        <div className="action-buttons">
+          {isRunning ? (
+            <button
+              onClick={() => handleAction('stop')}
+              disabled={isLoading}
+              className="action-button stop"
+              title="Stop container"
+            >
+              ⏹️
+            </button>
+          ) : (
+            <button
+              onClick={() => handleAction('start')}
+              disabled={isLoading}
+              className="action-button start"
+              title="Start container"
+            >
+              ▶️
+            </button>
+          )}
+          <button
+            onClick={() => handleAction('restart')}
+            disabled={isLoading}
+            className="action-button restart"
+            title="Restart container"
+          >
+            🔄
+          </button>
+          <button
+            onClick={() => handleAction('remove')}
+            disabled={isLoading}
+            className="action-button remove"
+            title="Remove container"
+          >
+            🗑️
           </button>
         </div>
-      </div>
-      
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="checkbox-col">
-                <input 
-                  type="checkbox" 
-                  checked={selectedContainers.size > 0 && selectedContainers.size === containers.length}
-                  onChange={() => {
-                    if (selectedContainers.size === containers.length) {
-                      setSelectedContainers(new Set());
-                    } else {
-                      setSelectedContainers(new Set(containers.map(c => c.id)));
-                    }
-                  }}
-                />
-              </th>
-              <th className="status-col"></th>
-              <th>Name</th>
-              <th>Container ID</th>
-              <th>Image</th>
-              <th>Port(s)</th>
-              <th>CPU (%)</th>
-              <th>Last started</th>
-              <th className="actions-col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {projects.map((project) => (
-              <React.Fragment key={project.name}>
-                <ProjectHeader 
-                  project={project}
-                  selectedContainers={selectedContainers}
-                  onToggleExpansion={() => toggleProjectExpansion(project.name)}
-                  onToggleSelection={() => toggleProjectSelection(project.name)}
-                  onProjectAction={handleProjectAction}
-                />
-                {project.isExpanded && project.containers.map((container) => (
-                  <ContainerRow
-                    key={container.id}
-                    container={container}
-                    containerStats={containerStats.get(container.id)}
-                    isSelected={selectedContainers.has(container.id)}
-                    onToggleSelection={() => toggleContainerSelection(container.id)}
-                    onUpdate={loadContainers}
-                  />
-                ))}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 };
 
@@ -341,7 +187,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
 
   return (
     <tr className="project-header">
-      <td>
+      <td className="checkbox-col">
         <input 
           type="checkbox" 
           checked={allSelected}
@@ -351,7 +197,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           onChange={onToggleSelection}
         />
       </td>
-      <td>
+      <td className="status-col">
         <button 
           className="expand-button"
           onClick={onToggleExpansion}
@@ -360,7 +206,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           {project.isExpanded ? '▼' : '▶'}
         </button>
       </td>
-      <td colSpan={5}>
+      <td colSpan={8} className="project-info-col">
         <div className="project-info">
           <strong className="project-name">{project.name}</strong>
           <span className="project-stats">
@@ -368,25 +214,25 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           </span>
         </div>
       </td>
-      <td>
+      <td className="actions-col">
         <div className="project-actions">
           <button
             onClick={() => onProjectAction(project.name, 'start')}
-            className="action-btn start"
+            className="action-button start"
             title="Start all containers"
           >
             ▶️
           </button>
           <button
             onClick={() => onProjectAction(project.name, 'stop')}
-            className="action-btn stop"
+            className="action-button stop"
             title="Stop all containers"
           >
             ⏹️
           </button>
           <button
             onClick={() => onProjectAction(project.name, 'restart')}
-            className="action-btn restart"
+            className="action-button restart"
             title="Restart all containers"
           >
             🔄
@@ -397,181 +243,318 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   );
 };
 
-interface ContainerRowProps {
-  container: ContainerInfo;
-  containerStats?: ContainerStats;
-  isSelected: boolean;
-  onToggleSelection: () => void;
-  onUpdate: () => void;
-}
+const ContainerList: React.FC = () => {
+  const [containers, setContainers] = useState<ContainerInfo[]>([]);
+  const [projects, setProjects] = useState<ContainerProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [containerStats, setContainerStats] = useState<Map<string, ContainerStats>>(new Map());
+  const [selectedContainers, setSelectedContainers] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showOnlyRunning, setShowOnlyRunning] = useState(false);
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate }) => {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
-    setIsLoading(true);
-    try {
-      let command = `${action}_container`;
-      let params: any = { containerId: container.id };
-      
-      if (action === 'remove') {
-        // Ask for confirmation before removing
-        const confirmed = confirm(`Are you sure you want to remove container "${container.name}"?`);
-        if (!confirmed) {
-          setIsLoading(false);
-          return;
+  const groupContainersByProject = (containers: ContainerInfo[]): ContainerProject[] => {
+    const projectMap = new Map<string, ContainerInfo[]>();
+    
+    containers.forEach(container => {
+      // Only group containers that have a project
+      if (container.project) {
+        const projectName = container.project;
+        if (!projectMap.has(projectName)) {
+          projectMap.set(projectName, []);
         }
-        // Force remove if container is running
-        params.force = container.state.toLowerCase() === 'running';
+        projectMap.get(projectName)!.push(container);
+      }
+    });
+
+    return Array.from(projectMap.entries()).map(([name, containers]) => ({
+      name,
+      containers: containers.sort((a, b) => a.name.localeCompare(b.name)),
+      isExpanded: true,
+      isSelected: false,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const loadContainers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const containerList = await invoke<ContainerInfo[]>('list_containers');
+      setContainers(containerList);
+      setProjects(groupContainersByProject(containerList));
+    } catch (err) {
+      setError(err as string);
+      console.error('Failed to load containers:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadContainerStats = async () => {
+    try {
+      const runningContainers = containers.filter(c => c.state.toLowerCase() === 'running');
+      const statsMap = new Map<string, ContainerStats>();
+      
+      for (const container of runningContainers) {
+        try {
+          const stats = await invoke<ContainerStats>('get_container_stats', { containerId: container.id });
+          statsMap.set(container.id, stats);
+        } catch (error) {
+          console.error(`Failed to get stats for container ${container.id}:`, error);
+        }
       }
       
-      const result = await invoke<string>(command, params);
-      console.log(result);
-      onUpdate();
+      setContainerStats(statsMap);
     } catch (error) {
-      console.error(`Failed to ${action} container:`, error);
-      alert(`Failed to ${action} container: ${error}`);
-    } finally {
-      setIsLoading(false);
+      console.error('Failed to load container stats:', error);
     }
   };
 
-  const getStatusIcon = (state: string) => {
-    if (state.toLowerCase() === 'running') {
-      return <span className="status-icon running" title="Running"></span>;
-    } else {
-      return <span className="status-icon stopped" title="Stopped"></span>;
+  useEffect(() => {
+    loadContainers();
+  }, []);
+
+  useEffect(() => {
+    if (containers.length > 0) {
+      loadContainerStats();
+      
+      const interval = setInterval(() => {
+        loadContainerStats();
+      }, 3000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [containers]);
+
+  const toggleProjectExpansion = (projectName: string) => {
+    setProjects(prevProjects =>
+      prevProjects.map(project =>
+        project.name === projectName
+          ? { ...project, isExpanded: !project.isExpanded }
+          : project
+      )
+    );
+  };
+
+  const toggleProjectSelection = (projectName: string) => {
+    const project = projects.find(p => p.name === projectName);
+    if (!project) return;
+
+    const containerIds = project.containers.map(c => c.id);
+    
+    setSelectedContainers(prev => {
+      const newSelected = new Set(prev);
+      const allSelected = containerIds.every(id => newSelected.has(id));
+      
+      if (allSelected) {
+        containerIds.forEach(id => newSelected.delete(id));
+      } else {
+        containerIds.forEach(id => newSelected.add(id));
+      }
+      
+      return newSelected;
+    });
+  };
+
+  const handleProjectAction = async (projectName: string, action: 'start' | 'stop' | 'restart') => {
+    const project = projects.find(p => p.name === projectName);
+    if (!project) return;
+
+    const promises = project.containers.map(container =>
+      invoke<string>(`${action}_container`, { containerId: container.id })
+        .catch(error => console.error(`Failed to ${action} container ${container.name}:`, error))
+    );
+
+    try {
+      await Promise.all(promises);
+      loadContainers();
+    } catch (error) {
+      console.error(`Failed to ${action} project containers:`, error);
     }
   };
 
-  const formatCreated = (timestamp: number) => {
-    const now = Date.now();
-    const diff = now - (timestamp * 1000);
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor(diff / (1000 * 60));
-
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return 'Just now';
+  const toggleContainerSelection = (containerId: string) => {
+    setSelectedContainers(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(containerId)) {
+        newSelected.delete(containerId);
+      } else {
+        newSelected.add(containerId);
+      }
+      return newSelected;
+    });
   };
 
-  const formatPorts = (ports: typeof container.ports) => {
-    if (ports.length === 0) return '-';
-    return ports.map(port => 
-      port.public_port 
-        ? `${port.public_port}:${port.private_port}`
-        : `${port.private_port}`
-    ).join(', ');
-  };
+  const filteredProjects = projects.map(project => ({
+    ...project,
+    containers: project.containers.filter(container => {
+      const matchesSearch = container.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           container.image.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           container.id.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesRunningFilter = !showOnlyRunning || container.state.toLowerCase() === 'running';
+      
+      return matchesSearch && matchesRunningFilter;
+    })
+  })).filter(project => project.containers.length > 0);
 
-  return (
-    <tr className={`container-row ${container.project ? 'has-project' : ''}`}>
-      <td>
-        <input 
-          type="checkbox" 
-          checked={isSelected}
-          onChange={onToggleSelection}
-        />
-      </td>
-      <td>
-        {getStatusIcon(container.state)}
-      </td>
-      <td>
-        <div className="container-name">
-          <strong>{container.service || container.name}</strong>
-          {container.service && (
-            <span className="service-info">
-              <small className="container-full-name">{container.name}</small>
-            </span>
-          )}
-        </div>
-      </td>
-      <td>
-        <span className="container-id-short">{container.id.substring(0, 12)}</span>
-      </td>
-      <td>
-        <span className="image-link">{container.image}</span>
-      </td>
-      <td>
-        {formatPorts(container.ports)}
-      </td>
-      <td>
-        {containerStats ? `${containerStats.cpu_percentage.toFixed(1)}%` : container.state.toLowerCase() === 'running' ? 'Loading...' : '-'}
-      </td>
-      <td>
-        {formatCreated(container.created)}
-      </td>
-      <td>
-        <div className="action-buttons">
-          {container.state.toLowerCase() === 'running' ? (
-            <>
-              <button
-                onClick={() => handleAction('stop')}
-                disabled={isLoading}
-                className="action-btn stop"
-                title="Stop container"
-              >
-                ⏹️
-              </button>
-              <button
-                onClick={() => handleAction('restart')}
-                disabled={isLoading}
-                className="action-btn restart"
-                title="Restart container"
-              >
-                🔄
-              </button>
-              <button
-                onClick={() => handleAction('pause')}
-                disabled={isLoading}
-                className="action-btn pause"
-                title="Pause container"
-              >
-                ⏸️
-              </button>
-            </>
-          ) : container.state.toLowerCase() === 'paused' ? (
-            <>
-              <button
-                onClick={() => handleAction('unpause')}
-                disabled={isLoading}
-                className="action-btn start"
-                title="Unpause container"
-              >
-                ▶️
-              </button>
-              <button
-                onClick={() => handleAction('stop')}
-                disabled={isLoading}
-                className="action-btn stop"
-                title="Stop container"
-              >
-                ⏹️
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => handleAction('start')}
-              disabled={isLoading}
-              className="action-btn start"
-              title="Start container"
-            >
-              ▶️
-            </button>
-          )}
-          <button
-            onClick={() => handleAction('remove')}
-            disabled={isLoading}
-            className="action-btn delete"
-            title="Remove container"
-          >
-            🗑️
+  // Get individual containers (those without projects)
+  const individualContainers = containers.filter(container => {
+    if (container.project) return false; // Skip containers that have projects
+    
+    const matchesSearch = container.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         container.image.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         container.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRunningFilter = !showOnlyRunning || container.state.toLowerCase() === 'running';
+    
+    return matchesSearch && matchesRunningFilter;
+  });
+
+  const totalFilteredContainers = filteredProjects.reduce((sum, project) => sum + project.containers.length, 0) + individualContainers.length;
+
+  if (loading) {
+    return (
+      <div className="container-list loading">
+        <div className="loading-spinner"></div>
+        <p>Loading containers...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container-list error">
+        <div className="error-message">
+          <h3>Failed to load containers</h3>
+          <p>{error}</p>
+          <button onClick={loadContainers} className="retry-button">
+            🔄 Retry
           </button>
         </div>
-      </td>
-    </tr>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container-list">
+      <div className="container-list-header">
+        <h2>Containers</h2>
+        <p className="page-subtitle">View all your running containers and applications. <a href="#">Learn more</a></p>
+        
+        <div className="controls-section">
+          <div className="search-and-filter">
+            <div className="search-container">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
+              />
+            </div>
+            <div className="filter-container">
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={showOnlyRunning}
+                  onChange={(e) => setShowOnlyRunning(e.target.checked)}
+                />
+                Only show running containers
+              </label>
+            </div>
+          </div>
+          <button onClick={loadContainers} className="refresh-button">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+      
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th className="checkbox-col">
+                                  <input 
+                    type="checkbox" 
+                    checked={selectedContainers.size > 0 && selectedContainers.size === totalFilteredContainers}
+                    onChange={() => {
+                      if (selectedContainers.size === totalFilteredContainers) {
+                        setSelectedContainers(new Set());
+                      } else {
+                        const projectIds = filteredProjects.flatMap(project => project.containers.map(c => c.id));
+                        const individualIds = individualContainers.map(c => c.id);
+                        const allIds = [...projectIds, ...individualIds];
+                        setSelectedContainers(new Set(allIds));
+                      }
+                    }}
+                />
+              </th>
+              <th className="status-col"></th>
+              <th>Name</th>
+              <th>Container ID</th>
+              <th>Image</th>
+              <th>Port(s)</th>
+              <th>CPU (%)</th>
+              <th>Memory usage</th>
+              <th>Memory (%)</th>
+              <th>Disk reads</th>
+              <th className="actions-col">Actions</th>
+            </tr>
+          </thead>
+                      <tbody>
+              {filteredProjects.length === 0 && individualContainers.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="empty-row">
+                    <div className="empty-state">
+                      <h3>No containers found</h3>
+                      <p>
+                        {searchTerm || showOnlyRunning 
+                          ? 'No containers match your search criteria.' 
+                          : 'No Docker containers are available on this system.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {filteredProjects.map((project) => (
+                    <React.Fragment key={project.name}>
+                      <ProjectHeader 
+                        project={project}
+                        selectedContainers={selectedContainers}
+                        onToggleExpansion={() => toggleProjectExpansion(project.name)}
+                        onToggleSelection={() => toggleProjectSelection(project.name)}
+                        onProjectAction={handleProjectAction}
+                      />
+                      {project.isExpanded && project.containers.map((container) => (
+                        <ContainerRow
+                          key={container.id}
+                          container={container}
+                          containerStats={containerStats.get(container.id)}
+                          isSelected={selectedContainers.has(container.id)}
+                          onToggleSelection={() => toggleContainerSelection(container.id)}
+                          onUpdate={loadContainers}
+                        />
+                      ))}
+                    </React.Fragment>
+                  ))}
+                  {individualContainers.map((container) => (
+                    <ContainerRow
+                      key={container.id}
+                      container={container}
+                      containerStats={containerStats.get(container.id)}
+                      isSelected={selectedContainers.has(container.id)}
+                      onToggleSelection={() => toggleContainerSelection(container.id)}
+                      onUpdate={loadContainers}
+                    />
+                  ))}
+                </>
+              )}
+            </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 
