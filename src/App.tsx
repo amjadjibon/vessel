@@ -5,7 +5,7 @@ import ImageList from "./components/ImageList";
 import VolumeList from "./components/VolumeList";
 import NetworkList from "./components/NetworkList";
 import Terminal from "./components/Terminal";
-import { SystemStats, DockerSystemInfo } from './types/docker';
+import { SystemStats } from './types/docker';
 import { 
   Container, 
   HardDrive, 
@@ -37,7 +37,7 @@ function App() {
   const [activePage, setActivePage] = useState<ActivePage>('containers');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
-  const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
+
 
   const navigationItems: NavigationItem[] = [
     { key: 'containers', icon: Container, label: 'Containers', page: 'containers' },
@@ -57,22 +57,11 @@ function App() {
       }
     };
 
-    const loadDockerInfo = async () => {
-      try {
-        const info = await invoke<DockerSystemInfo>('get_docker_system_info');
-        setDockerInfo(info);
-      } catch (error) {
-        console.error('Failed to load Docker info:', error);
-      }
-    };
-
     loadSystemStats();
-    loadDockerInfo();
 
     // Refresh stats every 5 seconds
     const interval = setInterval(() => {
       loadSystemStats();
-      loadDockerInfo();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -82,9 +71,7 @@ function App() {
     setActivePage(key);
   };
 
-  const formatBytes = (bytes: number): string => {
-    return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
-  };
+
 
   const renderMainContent = () => {
     switch (activePage) {

@@ -25,7 +25,7 @@ interface VolumeRowProps {
   allColumns: ColumnConfig[];
 }
 
-const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
+const VolumeRow: React.FC<VolumeRowProps> = ({ volume, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRemove = async () => {

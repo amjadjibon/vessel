@@ -8,7 +8,6 @@ import {
   Trash2, 
   Settings, 
   RefreshCw, 
-  Search,
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
@@ -30,7 +29,7 @@ interface ContainerRowProps {
   allColumns: ColumnConfig[];
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {

@@ -25,7 +25,7 @@ interface NetworkRowProps {
   allColumns: ColumnConfig[];
 }
 
-const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
+const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRemove = async () => {

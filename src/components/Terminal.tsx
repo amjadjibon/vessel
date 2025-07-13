@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { TerminalOutput, TerminalEntry, TerminalSession } from '../types/docker';
 import { 
   Trash2, 
-  Edit3, 
   Terminal as TerminalIcon,
   Plus,
   X

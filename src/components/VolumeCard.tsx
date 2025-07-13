@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { VolumeInfo } from '../types/docker';
 import { Trash2 } from 'lucide-react';

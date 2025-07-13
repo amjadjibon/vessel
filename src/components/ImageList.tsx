@@ -23,7 +23,7 @@ interface ImageRowProps {
   allColumns: ColumnConfig[];
 }
 
-const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelection, onUpdate, visibleColumns, allColumns }) => {
+const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRemove = async () => {

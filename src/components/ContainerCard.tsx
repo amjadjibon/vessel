@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ContainerInfo } from '../types/docker';
 import { Play, Square, RotateCcw } from 'lucide-react';
