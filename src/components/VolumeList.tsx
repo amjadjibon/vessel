@@ -138,6 +138,9 @@ const VolumeList: React.FC = () => {
   const [selectedVolumes, setSelectedVolumes] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newVolumeName, setNewVolumeName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   const [columns, setColumns] = useState<ColumnConfig[]>([
     { id: 'name', label: 'Name', visible: true, className: 'name-col' },
@@ -161,22 +164,50 @@ const VolumeList: React.FC = () => {
     }
   };
 
+  const createVolume = async () => {
+    if (!newVolumeName.trim()) {
+      alert('Please enter a volume name');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      await invoke<string>('create_volume', { volumeName: newVolumeName.trim() });
+      setShowCreateModal(false);
+      setNewVolumeName('');
+      await loadVolumes();
+    } catch (error) {
+      console.error('Failed to create volume:', error);
+      alert(`Failed to create volume: ${error}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleCreateModalClose = () => {
+    setShowCreateModal(false);
+    setNewVolumeName('');
+  };
+
   useEffect(() => {
     loadVolumes();
   }, []);
 
-  // Close column selector when clicking outside
+  // Close column selector and modal when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (showColumnSelector && !target.closest('.column-selector-container')) {
         setShowColumnSelector(false);
       }
+      if (showCreateModal && target.classList.contains('modal-overlay')) {
+        handleCreateModalClose();
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showColumnSelector]);
+  }, [showColumnSelector, showCreateModal]);
 
   const toggleVolumeSelection = (volumeName: string) => {
     setSelectedVolumes(prev => {
@@ -295,10 +326,13 @@ const VolumeList: React.FC = () => {
             </div>
           </div>
           <div className="header-actions">
-            <button onClick={loadVolumes} className="refresh-button">
+            <button onClick={loadVolumes} className="header-action-button">
               <RefreshCw className="icon" /> Refresh
             </button>
-            <button className="create-button">
+            <button 
+              className="header-action-button"
+              onClick={() => setShowCreateModal(true)}
+            >
               <Plus className="icon" /> Create
             </button>
           </div>
@@ -362,6 +396,54 @@ const VolumeList: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Create Volume Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>New Volume</h3>
+              <button 
+                className="modal-close"
+                onClick={handleCreateModalClose}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="volumeName">Name your volume</label>
+                <input
+                  id="volumeName"
+                  type="text"
+                  placeholder="Volume name"
+                  value={newVolumeName}
+                  onChange={(e) => setNewVolumeName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isCreating && createVolume()}
+                  className="volume-name-input"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="cancel-button"
+                onClick={handleCreateModalClose}
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button 
+                className="create-button"
+                onClick={createVolume}
+                disabled={isCreating || !newVolumeName.trim()}
+              >
+                {isCreating ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

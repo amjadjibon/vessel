@@ -392,6 +392,25 @@ async fn list_volumes() -> Result<Vec<VolumeInfo>, String> {
 }
 
 #[tauri::command]
+async fn create_volume(volume_name: String) -> Result<String, String> {
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    let config = bollard::volume::CreateVolumeOptions {
+        name: volume_name.clone(),
+        driver: "local".to_string(),
+        ..Default::default()
+    };
+
+    docker
+        .create_volume(config)
+        .await
+        .map_err(|e| format!("Failed to create volume: {}", e))?;
+
+    Ok(format!("Volume {} created successfully", volume_name))
+}
+
+#[tauri::command]
 async fn remove_volume(volume_name: String) -> Result<String, String> {
     let docker = Docker::connect_with_socket_defaults()
         .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
@@ -924,7 +943,7 @@ pub fn run() {
             greet, 
             list_containers, start_container, stop_container, restart_container, remove_container, pause_container, unpause_container,
             list_images, remove_image, force_remove_image,
-            list_volumes, remove_volume, get_volume_size,
+            list_volumes, create_volume, remove_volume, get_volume_size,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
             get_system_stats, get_docker_system_info, get_container_stats

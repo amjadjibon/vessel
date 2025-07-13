@@ -269,6 +269,31 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 90px;
+  justify-content: center;
+}
+
+.header-action-button {
+  background: none;
+  border: 1px solid #e0e0e0;
+  color: #757575;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+  justify-content: center;
+  width: 90px;
+}
+
+.header-action-button:hover {
+  background-color: #f5f5f5;
+  border-color: #d0d0d0;
+  color: #424242;
 }
 
 .refresh-button:hover {
@@ -1965,4 +1990,152 @@ h1, h2, h3, h4, h5, h6 {
   width: 16px;
   height: 16px;
   stroke-width: 2;
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 0;
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #212121;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: #212121;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #212121;
+}
+
+.volume-name-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background-color: #ffffff;
+  transition: border-color 0.2s ease;
+}
+
+.volume-name-input:focus {
+  outline: none;
+  border-color: #4A90E2;
+}
+
+.volume-name-input::placeholder {
+  color: #999;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 20px 24px;
+  border-top: 1px solid #e0e0e0;
+  background-color: #f9f9f9;
+  gap: 12px;
+}
+
+.modal-footer .cancel-button {
+  background: none;
+  border: 1px solid #e0e0e0;
+  color: #666;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.modal-footer .cancel-button:hover {
+  background-color: #f5f5f5;
+  border-color: #d0d0d0;
+}
+
+.modal-footer .cancel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-footer .create-button {
+  background-color: #4A90E2;
+  border: 1px solid #4A90E2;
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.modal-footer .create-button:hover:not(:disabled) {
+  background-color: #357ABD;
+  border-color: #357ABD;
+}
+
+.modal-footer .create-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
