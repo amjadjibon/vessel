@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ImageInfo } from '../types/docker';
-import ImageCard from './ImageCard';
 
 const ImageList: React.FC = () => {
   const [images, setImages] = useState<ImageInfo[]>([]);
@@ -77,25 +76,226 @@ const ImageList: React.FC = () => {
   return (
     <div className="image-list">
       <div className="image-list-header">
-        <div className="image-stats">
-          <h2>Images ({images.length})</h2>
-          <span className="total-size">Total size: {formatSize(getTotalSize())}</span>
+        <h2>Images</h2>
+        <p className="page-subtitle">View and manage your local and Docker Hub images.</p>
+        
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0', marginBottom: '16px' }}>
+          <button style={{
+            padding: '8px 16px',
+            border: '1px solid #e0e0e0',
+            borderRight: 'none',
+            borderRadius: '4px 0 0 4px',
+            backgroundColor: '#4A90E2',
+            color: 'white',
+            fontSize: '14px',
+            cursor: 'pointer'
+          }}>Local</button>
+          <button style={{
+            padding: '8px 16px',
+            border: '1px solid #e0e0e0',
+            borderRadius: '0 4px 4px 0',
+            backgroundColor: 'white',
+            color: '#757575',
+            fontSize: '14px',
+            cursor: 'pointer'
+          }}>My Hub</button>
         </div>
-        <button onClick={loadImages} className="refresh-button">
-          🔄 Refresh
-        </button>
+
+        {/* Stats Section */}
+        <div className="stats-section">
+          <div className="stat-item">
+            <span className="stat-label">Storage used</span>
+            <span className="stat-value">{formatSize(getTotalSize())}</span>
+            <span className="stat-note">in use</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">Total images</span>
+            <span className="stat-value">{images.length}</span>
+            <span className="stat-note">local images</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">Last refresh</span>
+            <span className="stat-value">Just now</span>
+            <span className="stat-note">auto-refresh enabled</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <input 
+              type="text" 
+              placeholder="Search images..." 
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #e0e0e0',
+                borderRadius: '4px',
+                fontSize: '14px',
+                width: '300px'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button style={{
+                padding: '6px 12px',
+                border: '1px solid #e0e0e0',
+                borderRadius: '4px 0 0 4px',
+                backgroundColor: '#4A90E2',
+                color: 'white',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}>📋 List</button>
+              <button style={{
+                padding: '6px 12px',
+                border: '1px solid #e0e0e0',
+                borderLeft: 'none',
+                borderRadius: '0 4px 4px 0',
+                backgroundColor: 'white',
+                color: '#757575',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}>⊞ Grid</button>
+            </div>
+          </div>
+          <button onClick={loadImages} className="refresh-button">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
       
-      <div className="images-grid">
-        {images.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            onUpdate={loadImages}
-          />
-        ))}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th className="checkbox-col">
+                <input type="checkbox" />
+              </th>
+              <th className="status-col"></th>
+              <th>Name</th>
+              <th>Tag</th>
+              <th>Image ID</th>
+              <th>Created</th>
+              <th>Size</th>
+              <th className="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {images.map((image) => (
+              <ImageRow
+                key={image.id}
+                image={image}
+                onUpdate={loadImages}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
+  );
+};
+
+interface ImageRowProps {
+  image: ImageInfo;
+  onUpdate: () => void;
+}
+
+const ImageRow: React.FC<ImageRowProps> = ({ image, onUpdate }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleRemove = async () => {
+    if (!confirm(`Are you sure you want to remove image ${getDisplayName()}?`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await invoke<string>('remove_image', { imageId: image.id });
+      console.log(result);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to remove image:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getDisplayName = () => {
+    if (image.repo_tags.length > 0 && image.repo_tags[0] !== '<none>:<none>') {
+      const fullTag = image.repo_tags[0];
+      const parts = fullTag.split(':');
+      return parts[0]; // Return name without tag
+    }
+    return '<none>';
+  };
+
+  const getTag = () => {
+    if (image.repo_tags.length > 0 && image.repo_tags[0] !== '<none>:<none>') {
+      const fullTag = image.repo_tags[0];
+      const parts = fullTag.split(':');
+      return parts[1] || 'latest'; // Return tag or 'latest'
+    }
+    return '<none>';
+  };
+
+  const formatSize = (bytes: number) => {
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    if (bytes === 0) return '0 B';
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const formatCreated = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - (timestamp * 1000);
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+
+    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    return 'Just now';
+  };
+
+  const isDangling = image.repo_tags.length === 0 || image.repo_tags[0] === '<none>:<none>';
+
+  return (
+    <tr className={isDangling ? 'dangling-row' : ''}>
+      <td>
+        <input type="checkbox" />
+      </td>
+      <td>
+        <span className={`status-icon ${isDangling ? 'inactive' : 'active'}`} title={isDangling ? 'Dangling' : 'Active'}></span>
+      </td>
+      <td>
+        <strong>{getDisplayName()}</strong>
+      </td>
+      <td>
+        <span className="image-tag">{getTag()}</span>
+      </td>
+      <td>
+        <span className="image-id-short">{image.id.substring(7, 19)}</span>
+      </td>
+      <td>
+        {formatCreated(image.created)}
+      </td>
+      <td>
+        {formatSize(image.size)}
+      </td>
+      <td>
+        <div className="action-buttons">
+          <button
+            onClick={handleRemove}
+            disabled={isLoading}
+            className="action-btn delete"
+            title="Remove image"
+          >
+            🗑️
+          </button>
+          <button className="action-btn more" title="More actions">
+            ⋯
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 };
 

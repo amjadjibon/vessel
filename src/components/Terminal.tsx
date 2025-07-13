@@ -195,26 +195,50 @@ const Terminal: React.FC = () => {
   };
 
   return (
-    <div className="terminal" onClick={handleTerminalClick}>
-      <div className="terminal-header">
-        <h2>🖥️ Terminal</h2>
-        <div className="terminal-controls">
-          <button 
-            onClick={() => setEntries([])} 
-            className="clear-button"
-            title="Clear terminal"
-          >
-            🗑️ Clear
-          </button>
+    <div className="terminal-page">
+      {/* Page Header */}
+      <div className="terminal-page-header">
+        <h2>Terminal</h2>
+        <p className="page-subtitle">Run Docker commands and system operations directly.</p>
+        
+        {/* Terminal Controls */}
+        <div className="terminal-controls-section">
+          <div className="terminal-stats">
+            <span className="terminal-status">
+              <span className="status-dot running"></span>
+              Shell: bash ({currentDirectory})
+            </span>
+          </div>
+          <div className="terminal-actions">
+            <button 
+              onClick={() => setEntries([])} 
+              className="clear-button"
+              title="Clear terminal"
+            >
+              <span>🗑️</span>
+              Clear
+            </button>
+            <button 
+              onClick={() => inputRef.current?.focus()} 
+              className="focus-button"
+              title="Focus terminal"
+            >
+              <span>📝</span>
+              Focus
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="terminal-content" ref={terminalRef}>
-        <div className="terminal-welcome">
-          <p>Welcome to Vessel Terminal</p>
-          <p>Type 'clear' to clear the terminal, use arrow keys for command history</p>
-          <p>Current directory: {currentDirectory}</p>
-        </div>
+      {/* Terminal Container */}
+      <div className="terminal-container" onClick={handleTerminalClick}>
+        <div className="terminal-content" ref={terminalRef}>
+          <div className="terminal-welcome">
+            <p className="welcome-title">🖥️ Vessel Terminal</p>
+            <p>Interactive terminal with Docker command support</p>
+            <p>Type commands below. Use arrow keys for history navigation.</p>
+            <p>Current directory: <code>{currentDirectory}</code></p>
+          </div>
 
         {entries.map((entry) => (
           <div key={entry.id} className="terminal-entry">
@@ -247,20 +271,21 @@ const Terminal: React.FC = () => {
           </div>
         ))}
 
-        <div className="terminal-input-line">
-          <span className="terminal-prompt">{getPrompt()}</span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={currentCommand}
-            onChange={(e) => setCurrentCommand(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="terminal-input-field"
-            disabled={isExecuting}
-            placeholder={isExecuting ? "Executing..." : "Enter command..."}
-            autoComplete="off"
-            spellCheck="false"
-          />
+          <div className="terminal-input-line">
+            <span className="terminal-prompt">{getPrompt()}</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={currentCommand}
+              onChange={(e) => setCurrentCommand(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="terminal-input-field"
+              disabled={isExecuting}
+              placeholder={isExecuting ? "Executing..." : "Enter command..."}
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </div>
         </div>
       </div>
     </div>
