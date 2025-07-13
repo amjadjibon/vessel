@@ -542,6 +542,10 @@ body {
   color: #FF9800;
 }
 
+.action-btn.pause {
+  color: #FF9800;
+}
+
 .action-btn.delete {
   color: #F44336;
 }

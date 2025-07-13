@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ContainerInfo } from '../types/docker';
+import { ContainerInfo, SystemStats, DockerSystemInfo, ContainerStats } from '../types/docker';
 
 const ContainerList: React.FC = () => {
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
+  const [containerStats, setContainerStats] = useState<Map<string, ContainerStats>>(new Map());
 
   const loadContainers = async () => {
     try {
@@ -21,9 +24,55 @@ const ContainerList: React.FC = () => {
     }
   };
 
+  const loadSystemStats = async () => {
+    try {
+      const stats = await invoke<SystemStats>('get_system_stats');
+      setSystemStats(stats);
+      const info = await invoke<DockerSystemInfo>('get_docker_system_info');
+      setDockerInfo(info);
+    } catch (error) {
+      console.error('Failed to load system stats:', error);
+    }
+  };
+
+  const loadContainerStats = async () => {
+    try {
+      const runningContainers = containers.filter(c => c.state.toLowerCase() === 'running');
+      const statsMap = new Map<string, ContainerStats>();
+      
+      for (const container of runningContainers) {
+        try {
+          const stats = await invoke<ContainerStats>('get_container_stats', { containerId: container.id });
+          statsMap.set(container.id, stats);
+        } catch (error) {
+          console.error(`Failed to get stats for container ${container.id}:`, error);
+        }
+      }
+      
+      setContainerStats(statsMap);
+    } catch (error) {
+      console.error('Failed to load container stats:', error);
+    }
+  };
+
   useEffect(() => {
     loadContainers();
+    loadSystemStats();
   }, []);
+
+  useEffect(() => {
+    if (containers.length > 0) {
+      loadContainerStats();
+      
+      // Refresh stats every 3 seconds
+      const interval = setInterval(() => {
+        loadContainerStats();
+        loadSystemStats();
+      }, 3000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [containers]);
 
   if (loading) {
     return (
@@ -72,18 +121,30 @@ const ContainerList: React.FC = () => {
         <div className="stats-section">
           <div className="stat-item">
             <span className="stat-label">Container CPU usage</span>
-            <span className="stat-value">3.50%</span>
-            <span className="stat-note">(12 CPUs available)</span>
+            <span className="stat-value">
+              {systemStats ? `${systemStats.cpu_usage.toFixed(2)}%` : 'Loading...'}
+            </span>
+            <span className="stat-note">
+              ({systemStats ? `${systemStats.cpu_count} CPUs` : 'Loading...'} available)
+            </span>
           </div>
           <div className="stat-item">
             <span className="stat-label">Container memory usage</span>
-            <span className="stat-value">1.96GB</span>
-            <span className="stat-note">of 7.47GB</span>
+            <span className="stat-value">
+              {systemStats ? `${systemStats.memory_used_gb.toFixed(2)}GB` : 'Loading...'}
+            </span>
+            <span className="stat-note">
+              of {systemStats ? `${systemStats.memory_total_gb.toFixed(2)}GB` : 'Loading...'}
+            </span>
           </div>
           <div className="stat-item">
             <span className="stat-label">Total containers</span>
-            <span className="stat-value">{containers.length}</span>
-            <span className="stat-note">running and stopped</span>
+            <span className="stat-value">
+              {dockerInfo ? dockerInfo.containers_total : containers.length}
+            </span>
+            <span className="stat-note">
+              {dockerInfo ? `${dockerInfo.containers_running} running, ${dockerInfo.containers_stopped} stopped` : 'loading...'}
+            </span>
           </div>
         </div>
 
@@ -134,6 +195,7 @@ const ContainerList: React.FC = () => {
               <ContainerRow
                 key={container.id}
                 container={container}
+                containerStats={containerStats.get(container.id)}
                 onUpdate={loadContainers}
               />
             ))}
@@ -146,21 +208,36 @@ const ContainerList: React.FC = () => {
 
 interface ContainerRowProps {
   container: ContainerInfo;
+  containerStats?: ContainerStats;
   onUpdate: () => void;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, onUpdate }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, onUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleAction = async (action: 'start' | 'stop' | 'restart') => {
+  const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
     setIsLoading(true);
     try {
-      const command = `${action}_container`;
-      const result = await invoke<string>(command, { containerId: container.id });
+      let command = `${action}_container`;
+      let params: any = { containerId: container.id };
+      
+      if (action === 'remove') {
+        // Ask for confirmation before removing
+        const confirmed = confirm(`Are you sure you want to remove container "${container.name}"?`);
+        if (!confirmed) {
+          setIsLoading(false);
+          return;
+        }
+        // Force remove if container is running
+        params.force = container.state.toLowerCase() === 'running';
+      }
+      
+      const result = await invoke<string>(command, params);
       console.log(result);
       onUpdate();
     } catch (error) {
       console.error(`Failed to ${action} container:`, error);
+      alert(`Failed to ${action} container: ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -217,7 +294,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, onUpdate }) => {
         {formatPorts(container.ports)}
       </td>
       <td>
-        3.5%
+        {containerStats ? `${containerStats.cpu_percentage.toFixed(1)}%` : container.state.toLowerCase() === 'running' ? 'Loading...' : '-'}
       </td>
       <td>
         {formatCreated(container.created)}
@@ -242,6 +319,33 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, onUpdate }) => {
               >
                 🔄
               </button>
+              <button
+                onClick={() => handleAction('pause')}
+                disabled={isLoading}
+                className="action-btn pause"
+                title="Pause container"
+              >
+                ⏸️
+              </button>
+            </>
+          ) : container.state.toLowerCase() === 'paused' ? (
+            <>
+              <button
+                onClick={() => handleAction('unpause')}
+                disabled={isLoading}
+                className="action-btn start"
+                title="Unpause container"
+              >
+                ▶️
+              </button>
+              <button
+                onClick={() => handleAction('stop')}
+                disabled={isLoading}
+                className="action-btn stop"
+                title="Stop container"
+              >
+                ⏹️
+              </button>
             </>
           ) : (
             <button
@@ -253,8 +357,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, onUpdate }) => {
               ▶️
             </button>
           )}
-          <button className="action-btn more" title="More actions">
-            ⋯
+          <button
+            onClick={() => handleAction('remove')}
+            disabled={isLoading}
+            className="action-btn delete"
+            title="Remove container"
+          >
+            🗑️
           </button>
         </div>
       </td>

@@ -90,3 +90,38 @@ export interface TerminalEntry {
   timestamp: Date;
   isExecuting?: boolean;
 }
+
+export interface SystemStats {
+  cpu_usage: number;
+  memory_used: number;
+  memory_total: number;
+  memory_used_gb: number;
+  memory_total_gb: number;
+  disk_used: number;
+  disk_total: number;
+  disk_used_gb: number;
+  disk_total_gb: number;
+  cpu_count: number;
+}
+
+export interface ContainerStats {
+  id: string;
+  name: string;
+  cpu_percentage: number;
+  memory_usage: number;
+  memory_limit: number;
+  memory_percentage: number;
+  network_rx: number;
+  network_tx: number;
+  block_read: number;
+  block_write: number;
+}
+
+export interface DockerSystemInfo {
+  containers_running: number;
+  containers_stopped: number;
+  containers_total: number;
+  images_total: number;
+  volumes_total: number;
+  networks_total: number;
+}

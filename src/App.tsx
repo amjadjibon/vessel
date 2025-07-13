@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from '@tauri-apps/api/core';
 import ContainerList from "./components/ContainerList";
 import ImageList from "./components/ImageList";
 import VolumeList from "./components/VolumeList";
 import NetworkList from "./components/NetworkList";
 import Terminal from "./components/Terminal";
+import { SystemStats, DockerSystemInfo } from './types/docker';
 import "./App.css";
 
 type ActivePage = 'ask_gordon' | 'containers' | 'images' | 'volumes' | 'builds' | 'models' | 'mcp_toolkit' | 'docker_hub' | 'docker_scout' | 'extensions' | 'networks' | 'terminal';
@@ -19,6 +21,8 @@ interface NavigationItem {
 function App() {
   const [activePage, setActivePage] = useState<ActivePage>('containers');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [dockerInfo, setDockerInfo] = useState<DockerSystemInfo | null>(null);
 
   const navigationItems: NavigationItem[] = [
     { key: 'ask_gordon', icon: '✨', label: 'Ask Gordon', badge: 'BETA' },
@@ -35,8 +39,43 @@ function App() {
     { key: 'terminal', icon: '🖥️', label: 'Terminal' },
   ];
 
+  useEffect(() => {
+    const loadSystemStats = async () => {
+      try {
+        const stats = await invoke<SystemStats>('get_system_stats');
+        setSystemStats(stats);
+      } catch (error) {
+        console.error('Failed to load system stats:', error);
+      }
+    };
+
+    const loadDockerInfo = async () => {
+      try {
+        const info = await invoke<DockerSystemInfo>('get_docker_system_info');
+        setDockerInfo(info);
+      } catch (error) {
+        console.error('Failed to load Docker info:', error);
+      }
+    };
+
+    loadSystemStats();
+    loadDockerInfo();
+
+    // Refresh stats every 5 seconds
+    const interval = setInterval(() => {
+      loadSystemStats();
+      loadDockerInfo();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleNavigation = (key: ActivePage) => {
     setActivePage(key);
+  };
+
+  const formatBytes = (bytes: number): string => {
+    return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
   };
 
   const renderMainContent = () => {
@@ -132,9 +171,15 @@ function App() {
           </div>
         </div>
         <div className="footer-center">
-          <span className="system-stat">RAM 3.04 GB</span>
-          <span className="system-stat">CPU 0.25%</span>
-          <span className="system-stat">Disk: 50.91 GB used (limit 1006.85 GB)</span>
+          <span className="system-stat">
+            RAM {systemStats ? `${systemStats.memory_used_gb.toFixed(2)} GB` : 'Loading...'}
+          </span>
+          <span className="system-stat">
+            CPU {systemStats ? `${systemStats.cpu_usage.toFixed(2)}%` : 'Loading...'}
+          </span>
+          <span className="system-stat">
+            Disk: {systemStats ? `${systemStats.disk_used_gb.toFixed(2)} GB used (${systemStats.disk_total_gb.toFixed(2)} GB total)` : 'Loading...'}
+          </span>
         </div>
         <div className="footer-right">
           <button className="footer-button" onClick={() => setActivePage('terminal')}>
