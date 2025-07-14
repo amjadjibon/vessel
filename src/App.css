@@ -257,21 +257,6 @@ body {
   cursor: pointer;
 }
 
-.refresh-button {
-  background: none;
-  border: 1px solid #e0e0e0;
-  color: #757575;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 90px;
-  justify-content: center;
-}
 
 .header-action-button {
   background: none;
@@ -296,11 +281,6 @@ body {
   color: #424242;
 }
 
-.refresh-button:hover {
-  background-color: #f5f5f5;
-  border-color: #d0d0d0;
-  color: #424242;
-}
 
 /* Column Selector */
 .column-selector-container {
@@ -1848,7 +1828,6 @@ h1, h2, h3, h4, h5, h6 {
 /* Lucide React Icons Styling */
 .action-icon,
 .retry-icon,
-.refresh-icon,
 .column-selector-icon,
 .icon,
 .expand-icon,
@@ -1921,8 +1900,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-right: 8px;
 }
 
-/* Refresh and Retry button styling */
-.refresh-button,
+/* Retry button styling */
 .retry-button {
   display: flex;
   align-items: center;

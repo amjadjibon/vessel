@@ -5,20 +5,18 @@ interface HeaderButtonProps {
   children: React.ReactNode;
   disabled?: boolean;
   title?: string;
-  variant?: 'primary' | 'secondary';
 }
 
 const HeaderButton: React.FC<HeaderButtonProps> = ({ 
   onClick, 
   children, 
   disabled = false, 
-  title,
-  variant = 'secondary'
+  title
 }) => {
   return (
     <button 
       onClick={onClick}
-      className={`header-action-button ${variant === 'primary' ? 'primary' : ''}`}
+      className="header-action-button"
       disabled={disabled}
       title={title}
     >
