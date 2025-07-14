@@ -14,7 +14,8 @@ import {
   RefreshCw,
   ArrowDown,
   Pause,
-  PlayCircle
+  PlayCircle,
+  ChevronDown
 } from 'lucide-react';
 
 interface ContainerDetailProps {
@@ -34,6 +35,12 @@ const ContainerDetail: React.FC<ContainerDetailProps> = ({ containerId, onBack }
   const [error, setError] = useState<string | null>(null);
   const logsRef = React.useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const [inspectData, setInspectData] = useState<any>(null);
+  const [inspectLoading, setInspectLoading] = useState<boolean>(false);
+  const [inspectError, setInspectError] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [showRawJson, setShowRawJson] = useState<boolean>(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadContainerDetails();
@@ -181,6 +188,153 @@ Try refreshing or check the container status.`;
     }
   };
 
+  const loadInspectData = async () => {
+    try {
+      setInspectLoading(true);
+      setInspectError(null);
+      console.log('Loading inspect data for container:', containerId);
+      
+      const inspectResult = await invoke<any>('inspect_container', { 
+        containerId: containerId 
+      });
+      
+      setInspectData(inspectResult);
+    } catch (err) {
+      console.error('Failed to load inspect data:', err);
+      setInspectError(`Failed to load inspect data: ${err}`);
+    } finally {
+      setInspectLoading(false);
+    }
+  };
+
+  const toggleSection = (sectionName: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(sectionName)) {
+      newCollapsed.delete(sectionName);
+    } else {
+      newCollapsed.add(sectionName);
+    }
+    setCollapsedSections(newCollapsed);
+  };
+
+  const toggleFilter = (filter: string) => {
+    setActiveFilters(prev => {
+      if (prev.includes(filter)) {
+        return prev.filter(f => f !== filter);
+      } else {
+        return [...prev, filter];
+      }
+    });
+  };
+
+
+  const getFilteredInspectData = () => {
+    if (!inspectData) return null;
+    if (activeFilters.length === 0) return inspectData;
+
+    const filtered: any = {};
+    activeFilters.forEach(filter => {
+      switch (filter) {
+        case 'Platform':
+          if (inspectData.Platform) filtered.Platform = inspectData.Platform;
+          if (inspectData.Os) filtered.Os = inspectData.Os;
+          if (inspectData.Architecture) filtered.Architecture = inspectData.Architecture;
+          break;
+        case 'Cmd':
+          if (inspectData.Config?.Cmd) filtered.Cmd = inspectData.Config.Cmd;
+          if (inspectData.Config?.Entrypoint) filtered.Entrypoint = inspectData.Config.Entrypoint;
+          break;
+        case 'State':
+          if (inspectData.State) filtered.State = inspectData.State;
+          break;
+        case 'Image':
+          if (inspectData.Image) filtered.Image = inspectData.Image;
+          if (inspectData.Config?.Image) filtered.ImageConfig = inspectData.Config.Image;
+          break;
+        case 'Network':
+          if (inspectData.NetworkSettings) filtered.NetworkSettings = inspectData.NetworkSettings;
+          break;
+        case 'Mounts':
+          if (inspectData.Mounts) filtered.Mounts = inspectData.Mounts;
+          break;
+        case 'Config':
+          if (inspectData.Config) filtered.Config = inspectData.Config;
+          break;
+        case 'HostConfig':
+          if (inspectData.HostConfig) filtered.HostConfig = inspectData.HostConfig;
+          break;
+        case 'Volumes':
+          if (inspectData.Config?.Volumes) filtered.Volumes = inspectData.Config.Volumes;
+          break;
+        case 'Labels':
+          if (inspectData.Config?.Labels) filtered.Labels = inspectData.Config.Labels;
+          break;
+        default:
+          if (inspectData[filter]) filtered[filter] = inspectData[filter];
+      }
+    });
+    return filtered;
+  };
+
+  const renderJsonContent = () => {
+    const dataToRender = getFilteredInspectData();
+    if (!dataToRender) return null;
+
+    if (showRawJson) {
+      const jsonString = JSON.stringify(dataToRender, null, 2);
+      const lines = jsonString.split('\n');
+      return (
+        <pre>
+          {lines.map((line, index) => (
+            <div key={index}>
+              <span className="line-number">{index + 1}</span>
+              {line}
+            </div>
+          ))}
+        </pre>
+      );
+    }
+
+    const renderSection = (title: string, data: any) => {
+      const isCollapsed = collapsedSections.has(title);
+      return (
+        <div key={title} className={`json-section ${isCollapsed ? 'collapsed' : ''}`}>
+          <div className="json-section-header" onClick={() => toggleSection(title)}>
+            <div className="section-toggle">
+              <ChevronDown />
+            </div>
+            {title}
+          </div>
+          <div className="json-section-content">
+            <pre>{JSON.stringify(data, null, 2)}</pre>
+          </div>
+        </div>
+      );
+    };
+
+    if (activeFilters.length === 0) {
+      // Show organized sections when no filters are active
+      const sections = [
+        { title: 'State', data: dataToRender.State },
+        { title: 'Image', data: { Image: dataToRender.Image, ImageConfig: dataToRender.Config?.Image } },
+        { title: 'Config', data: dataToRender.Config },
+        { title: 'HostConfig', data: dataToRender.HostConfig },
+        { title: 'NetworkSettings', data: dataToRender.NetworkSettings },
+        { title: 'Mounts', data: dataToRender.Mounts },
+        { title: 'Platform', data: { Platform: dataToRender.Platform, Os: dataToRender.Os, Architecture: dataToRender.Architecture } }
+      ].filter(section => section.data && Object.keys(section.data).length > 0);
+
+      return (
+        <div>
+          {sections.map(section => renderSection(section.title, section.data))}
+        </div>
+      );
+    } else {
+      // Show filtered data as single section
+      return <pre>{JSON.stringify(dataToRender, null, 2)}</pre>;
+    }
+  };
+
   const handleContainerAction = async (action: string) => {
     if (!container) return;
     
@@ -280,7 +434,72 @@ Try refreshing or check the container status.`;
           </div>
         );
       case 'inspect':
-        return <div className="tab-content">Container inspect data will be displayed here</div>;
+        return (
+          <div className="inspect-container">
+            <div className="inspect-toolbar">
+              <div className="inspect-filters">
+                {['Platform', 'Cmd', 'State', 'Image', 'Network', 'Mounts', 'Config', 'HostConfig', 'Volumes', 'Labels'].map(filter => (
+                  <button
+                    key={filter}
+                    className={`filter-button ${activeFilters.includes(filter) ? 'active' : ''}`}
+                    onClick={() => toggleFilter(filter)}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+              <div className="inspect-controls">
+                <label className="raw-json-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showRawJson}
+                    onChange={(e) => setShowRawJson(e.target.checked)}
+                  />
+                  Raw JSON
+                </label>
+                <button 
+                  className="icon-button" 
+                  title="Refresh inspect data"
+                  onClick={loadInspectData}
+                  disabled={inspectLoading}
+                >
+                  <RefreshCw className={`icon ${inspectLoading ? 'spinning' : ''}`} />
+                </button>
+                <button 
+                  className="icon-button" 
+                  title="Copy JSON"
+                  onClick={() => {
+                    if (inspectData) {
+                      navigator.clipboard.writeText(JSON.stringify(getFilteredInspectData(), null, 2));
+                      alert('JSON copied to clipboard!');
+                    }
+                  }}
+                >
+                  <Copy className="icon" />
+                </button>
+              </div>
+            </div>
+            <div className="json-viewer">
+              {inspectLoading ? (
+                <div className="inspect-loading">
+                  <div className="loading-spinner"></div>
+                  <span>Loading container inspect data...</span>
+                </div>
+              ) : inspectError ? (
+                <div className="inspect-error">
+                  <p>Error loading inspect data:</p>
+                  <pre>{inspectError}</pre>
+                </div>
+              ) : inspectData ? (
+                renderJsonContent()
+              ) : (
+                <div className="inspect-empty">
+                  <p>No inspect data available. Click refresh to load.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
       case 'bindMounts':
         return <div className="tab-content">Bind mounts information will be displayed here</div>;
       case 'exec':
@@ -427,6 +646,8 @@ Try refreshing or check the container status.`;
                 setActiveTab(tab.id as TabType);
                 if (tab.id === 'logs') {
                   loadLogs();
+                } else if (tab.id === 'inspect') {
+                  loadInspectData();
                 }
               }}
               className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}

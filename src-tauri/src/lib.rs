@@ -10,7 +10,7 @@ use tokio::process::Command as TokioCommand;
 use sysinfo::System;
 // use tokio::time::{timeout, Duration};
 use futures_util::StreamExt;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -1063,6 +1063,21 @@ async fn stop_log_stream(container_id: String, app_handle: tauri::AppHandle) -> 
     Ok("Log stream stop signal sent".to_string())
 }
 
+#[tauri::command]
+async fn inspect_container(container_id: String) -> Result<serde_json::Value, String> {
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    let inspect_result = docker
+        .inspect_container(&container_id, None)
+        .await
+        .map_err(|e| format!("Failed to inspect container: {}", e))?;
+
+    // Convert the inspect result to a JSON value for easy frontend handling
+    serde_json::to_value(inspect_result)
+        .map_err(|e| format!("Failed to serialize inspect data: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1074,7 +1089,7 @@ pub fn run() {
             list_volumes, create_volume, remove_volume, get_volume_size,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
-            get_system_stats, get_docker_system_info, get_container_stats, get_container_logs, start_log_stream, stop_log_stream
+            get_system_stats, get_docker_system_info, get_container_stats, get_container_logs, start_log_stream, stop_log_stream, inspect_container
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
