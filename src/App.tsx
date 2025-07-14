@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import ContainerList from "./components/ContainerList";
+import ContainerDetail from "./components/ContainerDetail";
 import ImageList from "./components/ImageList";
 import VolumeList from "./components/VolumeList";
 import NetworkList from "./components/NetworkList";
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 import "./App.css";
 
-type ActivePage = 'containers' | 'images' | 'volumes' | 'networks' | 'terminal';
+type ActivePage = 'containers' | 'images' | 'volumes' | 'networks' | 'terminal' | 'container-detail';
 
 interface NavigationItem {
   key: ActivePage;
@@ -35,6 +36,7 @@ interface NavigationItem {
 
 function App() {
   const [activePage, setActivePage] = useState<ActivePage>('containers');
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
 
@@ -69,6 +71,20 @@ function App() {
 
   const handleNavigation = (key: ActivePage) => {
     setActivePage(key);
+    // Reset container selection when navigating away from container detail
+    if (key !== 'container-detail') {
+      setSelectedContainerId(null);
+    }
+  };
+
+  const handleContainerSelect = (containerId: string) => {
+    setSelectedContainerId(containerId);
+    setActivePage('container-detail');
+  };
+
+  const handleBackToContainers = () => {
+    setSelectedContainerId(null);
+    setActivePage('containers');
   };
 
 
@@ -76,7 +92,16 @@ function App() {
   const renderMainContent = () => {
     switch (activePage) {
       case 'containers':
-        return <ContainerList />;
+        return <ContainerList onContainerSelect={handleContainerSelect} />;
+      case 'container-detail':
+        return selectedContainerId ? (
+          <ContainerDetail 
+            containerId={selectedContainerId} 
+            onBack={handleBackToContainers} 
+          />
+        ) : (
+          <ContainerList onContainerSelect={handleContainerSelect} />
+        );
       case 'images':
         return <ImageList />;
       case 'volumes':

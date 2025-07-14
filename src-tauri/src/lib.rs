@@ -1,5 +1,5 @@
 use bollard::Docker;
-use bollard::container::{ListContainersOptions, RemoveContainerOptions};
+use bollard::container::{ListContainersOptions, RemoveContainerOptions, LogsOptions};
 use bollard::image::ListImagesOptions;
 use bollard::volume::ListVolumesOptions;
 use bollard::network::ListNetworksOptions;
@@ -10,6 +10,7 @@ use tokio::process::Command as TokioCommand;
 use sysinfo::System;
 // use tokio::time::{timeout, Duration};
 use futures_util::StreamExt;
+use tauri::{Emitter, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -949,6 +950,119 @@ async fn get_container_stats(container_id: String) -> Result<ContainerStats, Str
     }
 }
 
+#[tauri::command]
+async fn get_container_logs(container_id: String, tail: Option<u64>, follow: Option<bool>) -> Result<String, String> {
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    let tail_value = tail.unwrap_or(0);
+    let logs_options = LogsOptions::<String> {
+        stdout: true,
+        stderr: true,
+        timestamps: true,
+        tail: if tail_value == 0 { "all".to_string() } else { tail_value.to_string() },
+        follow: follow.unwrap_or(false),
+        ..Default::default()
+    };
+
+    let mut log_stream = docker.logs(&container_id, Some(logs_options));
+    let mut logs = String::new();
+
+    // Collect logs from the stream
+    while let Some(log_result) = log_stream.next().await {
+        match log_result {
+            Ok(log_output) => {
+                // Convert log output to string
+                let bytes = log_output.into_bytes();
+                let log_str = String::from_utf8_lossy(&bytes);
+                
+                // Clean up Docker log format - remove the first 8 bytes which contain Docker headers
+                let cleaned_log = if bytes.len() > 8 {
+                    String::from_utf8_lossy(&bytes[8..])
+                } else {
+                    log_str
+                };
+                
+                logs.push_str(&cleaned_log);
+            }
+            Err(e) => {
+                eprintln!("Error reading log: {}", e);
+                break;
+            }
+        }
+        
+        // If not following, break after collecting initial logs
+        if !follow.unwrap_or(false) {
+            break;
+        }
+    }
+
+    Ok(logs)
+}
+
+#[tauri::command]
+async fn start_log_stream(container_id: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    let logs_options = LogsOptions::<String> {
+        stdout: true,
+        stderr: true,
+        timestamps: true,
+        tail: "all".to_string(),
+        follow: true, // This enables streaming
+        ..Default::default()
+    };
+
+    let container_id_clone = container_id.clone();
+    let app_handle_clone = app_handle.clone();
+
+    // Spawn a background task to stream logs
+    tokio::spawn(async move {
+        let mut log_stream = docker.logs(&container_id_clone, Some(logs_options));
+        
+        while let Some(log_result) = log_stream.next().await {
+            match log_result {
+                Ok(log_output) => {
+                    // Convert log output to string
+                    let bytes = log_output.into_bytes();
+                    
+                    // Clean up Docker log format - remove the first 8 bytes which contain Docker headers
+                    let cleaned_log = if bytes.len() > 8 {
+                        String::from_utf8_lossy(&bytes[8..])
+                    } else {
+                        String::from_utf8_lossy(&bytes)
+                    };
+                    
+                    // Emit the log line to the frontend
+                    if let Err(e) = app_handle_clone.emit(&format!("log-stream-{}", container_id_clone), cleaned_log.to_string()) {
+                        eprintln!("Failed to emit log event: {}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading log stream: {}", e);
+                    // Emit error event
+                    let _ = app_handle_clone.emit(&format!("log-stream-error-{}", container_id_clone), format!("Log stream error: {}", e));
+                    break;
+                }
+            }
+        }
+        
+        // Emit stream ended event
+        let _ = app_handle_clone.emit(&format!("log-stream-ended-{}", container_id_clone), "Log stream ended");
+    });
+
+    Ok("Log stream started".to_string())
+}
+
+#[tauri::command]
+async fn stop_log_stream(container_id: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    // Emit stop signal
+    let _ = app_handle.emit(&format!("log-stream-stop-{}", container_id), "Stream stopped");
+    Ok("Log stream stop signal sent".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -960,7 +1074,7 @@ pub fn run() {
             list_volumes, create_volume, remove_volume, get_volume_size,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
-            get_system_stats, get_docker_system_info, get_container_stats
+            get_system_stats, get_docker_system_info, get_container_stats, get_container_logs, start_log_stream, stop_log_stream
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

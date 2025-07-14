@@ -27,11 +27,12 @@ interface ContainerRowProps {
   isSelected: boolean;
   onToggleSelection: () => void;
   onUpdate: () => void;
+  onContainerSelect?: (containerId: string) => void;
   visibleColumns: ColumnConfig[];
   allColumns: ColumnConfig[];
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, allColumns }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, onContainerSelect, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
@@ -205,7 +206,16 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
 
   return (
     <>
-      <tr className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''}`}>
+      <tr 
+        className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''} ${onContainerSelect ? 'clickable' : ''}`}
+        onClick={(e) => {
+          // Only trigger container select if clicking on the row itself, not on interactive elements
+          const target = e.target as HTMLElement;
+          if (onContainerSelect && !target.closest('input, button, .action-button')) {
+            onContainerSelect(container.id);
+          }
+        }}
+      >
         <td className="checkbox-col">
           <input 
             type="checkbox" 
@@ -365,7 +375,11 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   );
 };
 
-const ContainerList: React.FC = () => {
+interface ContainerListProps {
+  onContainerSelect?: (containerId: string) => void;
+}
+
+const ContainerList: React.FC<ContainerListProps> = ({ onContainerSelect }) => {
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
   const [projects, setProjects] = useState<ContainerProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -743,6 +757,7 @@ const ContainerList: React.FC = () => {
                         isSelected={selectedContainers.has(container.id)}
                         onToggleSelection={() => toggleContainerSelection(container.id)}
                         onUpdate={loadContainers}
+                        onContainerSelect={onContainerSelect}
                         visibleColumns={visibleColumns}
                         allColumns={columns}
                       />
