@@ -1,6 +1,7 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ImageInfo } from '../types/docker';
+import DeleteImageModal from './DeleteImageModal';
 import { Trash2 } from 'lucide-react';
 
 interface ImageCardProps {
@@ -10,12 +11,9 @@ interface ImageCardProps {
 
 const ImageCard: React.FC<ImageCardProps> = ({ image, onUpdate }) => {
   const [isLoading, setIsLoading] = React.useState(false);
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
 
   const handleRemove = async () => {
-    if (!confirm(`Are you sure you want to remove image ${getDisplayName()}?`)) {
-      return;
-    }
-
     setIsLoading(true);
     try {
       const result = await invoke<string>('remove_image', { imageId: image.id });
@@ -25,7 +23,12 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onUpdate }) => {
       console.error('Failed to remove image:', error);
     } finally {
       setIsLoading(false);
+      setShowDeleteModal(false);
     }
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
   };
 
   const getDisplayName = () => {
@@ -50,48 +53,58 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onUpdate }) => {
   const isDangling = image.repo_tags.length === 0 || image.repo_tags[0] === '<none>:<none>';
 
   return (
-    <div className={`image-card ${isDangling ? 'dangling' : ''}`}>
-      <div className="image-header">
-        <div className="image-name-info">
-          <h3 className="image-name">{getDisplayName()}</h3>
-          {isDangling && <span className="dangling-badge">Dangling</span>}
+    <>
+      <div className={`image-card ${isDangling ? 'dangling' : ''}`}>
+        <div className="image-header">
+          <div className="image-name-info">
+            <h3 className="image-name">{getDisplayName()}</h3>
+            {isDangling && <span className="dangling-badge">Dangling</span>}
+          </div>
+          <div className="image-actions">
+            <button 
+              onClick={handleDeleteClick}
+              disabled={isLoading}
+              className="action-button remove"
+            >
+              <Trash2 className="action-icon" /> Remove
+            </button>
+          </div>
         </div>
-        <div className="image-actions">
-          <button 
-            onClick={handleRemove}
-            disabled={isLoading}
-            className="action-button remove"
-          >
-            <Trash2 className="action-icon" /> Remove
-          </button>
+        
+        <div className="image-details">
+          {image.repo_tags.length > 1 && (
+            <div className="detail-row">
+              <span className="detail-label">Tags:</span>
+              <span className="detail-value">{image.repo_tags.slice(1).join(', ')}</span>
+            </div>
+          )}
+          <div className="detail-row">
+            <span className="detail-label">Size:</span>
+            <span className="detail-value">{formatSize(image.size)}</span>
+          </div>
+          <div className="detail-row">
+            <span className="detail-label">Virtual Size:</span>
+            <span className="detail-value">{formatSize(image.virtual_size)}</span>
+          </div>
+          <div className="detail-row">
+            <span className="detail-label">Created:</span>
+            <span className="detail-value">{formatCreated(image.created)}</span>
+          </div>
+          <div className="detail-row">
+            <span className="detail-label">ID:</span>
+            <span className="detail-value image-id">{image.id.substring(7, 19)}</span>
+          </div>
         </div>
       </div>
       
-      <div className="image-details">
-        {image.repo_tags.length > 1 && (
-          <div className="detail-row">
-            <span className="detail-label">Tags:</span>
-            <span className="detail-value">{image.repo_tags.slice(1).join(', ')}</span>
-          </div>
-        )}
-        <div className="detail-row">
-          <span className="detail-label">Size:</span>
-          <span className="detail-value">{formatSize(image.size)}</span>
-        </div>
-        <div className="detail-row">
-          <span className="detail-label">Virtual Size:</span>
-          <span className="detail-value">{formatSize(image.virtual_size)}</span>
-        </div>
-        <div className="detail-row">
-          <span className="detail-label">Created:</span>
-          <span className="detail-value">{formatCreated(image.created)}</span>
-        </div>
-        <div className="detail-row">
-          <span className="detail-label">ID:</span>
-          <span className="detail-value image-id">{image.id.substring(7, 19)}</span>
-        </div>
-      </div>
-    </div>
+      <DeleteImageModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleRemove}
+        imageName={getDisplayName()}
+        isLoading={isLoading}
+      />
+    </>
   );
 };
 

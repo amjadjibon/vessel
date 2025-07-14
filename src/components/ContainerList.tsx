@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ContainerInfo, ContainerStats, ContainerProject } from '../types/docker';
+import DeleteContainerModal from './DeleteContainerModal';
+import HeaderButton from './HeaderButton';
 import { 
   Play, 
   Square, 
@@ -31,30 +33,80 @@ interface ContainerRowProps {
 
 const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const handleAction = async (action: 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause') => {
+    if (action === 'remove') {
+      setShowDeleteModal(true);
+      return;
+    }
+    
     setIsLoading(true);
     try {
       let command = `${action}_container`;
       let params: any = { containerId: container.id };
       
-      if (action === 'remove') {
-        const confirmed = confirm(`Are you sure you want to remove container "${container.name}"?`);
-        if (!confirmed) {
-          setIsLoading(false);
-          return;
-        }
-        params.force = container.state.toLowerCase() === 'running';
-      }
-      
       const result = await invoke<string>(command, params);
-      console.log(result);
-      onUpdate();
+      console.log(`Container ${action} result:`, result);
+      
+      // Show success message
+      const actionPastTense = action === 'restart' ? 'restarted' : `${action}ed`;
+      alert(`Container "${container.name}" ${actionPastTense} successfully!`);
+      
+      await onUpdate();
     } catch (error) {
       console.error(`Failed to ${action} container:`, error);
-      alert(`Failed to ${action} container: ${error}`);
+      const errorMessage = error as string;
+      
+      let displayMessage = `Failed to ${action} container "${container.name}": ${errorMessage}`;
+      
+      if (errorMessage.includes('not running') && action === 'stop') {
+        displayMessage += '\n\nTip: This container is already stopped.';
+      } else if (errorMessage.includes('already running') && action === 'start') {
+        displayMessage += '\n\nTip: This container is already running.';
+      } else if (errorMessage.includes('permission denied') || errorMessage.includes('access denied')) {
+        displayMessage += '\n\nTip: Make sure Docker is running and you have permission to manage Docker containers.';
+      } else if (errorMessage.includes('connect') || errorMessage.includes('socket')) {
+        displayMessage += '\n\nTip: Make sure Docker Desktop is running and accessible.';
+      }
+      
+      alert(displayMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setIsLoading(true);
+    try {
+      const params: any = { 
+        containerId: container.id,
+        force: container.state.toLowerCase() === 'running'
+      };
+      
+      const result = await invoke<string>('remove_container', params);
+      console.log(`Container remove result:`, result);
+      
+      alert(`Container "${container.name}" removed successfully!`);
+      await onUpdate();
+    } catch (error) {
+      console.error('Failed to remove container:', error);
+      const errorMessage = error as string;
+      
+      let displayMessage = `Failed to remove container "${container.name}": ${errorMessage}`;
+      
+      if (errorMessage.includes('in use')) {
+        displayMessage += '\n\nTip: Stop the container first before removing it, or use force removal.';
+      } else if (errorMessage.includes('permission denied') || errorMessage.includes('access denied')) {
+        displayMessage += '\n\nTip: Make sure Docker is running and you have permission to manage Docker containers.';
+      } else if (errorMessage.includes('connect') || errorMessage.includes('socket')) {
+        displayMessage += '\n\nTip: Make sure Docker Desktop is running and accessible.';
+      }
+      
+      alert(displayMessage);
+    } finally {
+      setIsLoading(false);
+      setShowDeleteModal(false);
     }
   };
 
@@ -152,70 +204,80 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, containerStats, 
   };
 
   return (
-    <tr className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''}`}>
-      <td className="checkbox-col">
-        <input 
-          type="checkbox" 
-          checked={isSelected}
-          onChange={onToggleSelection}
-        />
-      </td>
-      <td className="status-col">
-        {getStatusIcon(container.state)}
-      </td>
-      {/* Always show Name and Image first */}
-      <td className="name-col">
-        {getColumnValue('name')}
-      </td>
-      <td className="image-col">
-        {getColumnValue('image')}
-      </td>
-      {/* Then show configurable columns */}
-      {allColumns.filter(column => !['name', 'image'].includes(column.id) && column.visible).map(column => (
-        <td key={column.id} className={column.className || `${column.id}-col`}>
-          {getColumnValue(column.id)}
+    <>
+      <tr className={`container-row ${isRunning ? 'running' : 'stopped'} ${container.project ? 'has-project' : ''}`}>
+        <td className="checkbox-col">
+          <input 
+            type="checkbox" 
+            checked={isSelected}
+            onChange={onToggleSelection}
+          />
         </td>
-      ))}
-      <td className="actions-col">
-        <div className="action-buttons">
-          {isRunning ? (
+        <td className="status-col">
+          {getStatusIcon(container.state)}
+        </td>
+        {/* Always show Name and Image first */}
+        <td className="name-col">
+          {getColumnValue('name')}
+        </td>
+        <td className="image-col">
+          {getColumnValue('image')}
+        </td>
+        {/* Then show configurable columns */}
+        {allColumns.filter(column => !['name', 'image'].includes(column.id) && column.visible).map(column => (
+          <td key={column.id} className={column.className || `${column.id}-col`}>
+            {getColumnValue(column.id)}
+          </td>
+        ))}
+        <td className="actions-col">
+          <div className="action-buttons">
+            {isRunning ? (
+              <button
+                onClick={() => handleAction('stop')}
+                disabled={isLoading}
+                className="action-button stop"
+                title="Stop container"
+              >
+                <Square className="action-icon" />
+              </button>
+            ) : (
+              <button
+                onClick={() => handleAction('start')}
+                disabled={isLoading}
+                className="action-button start"
+                title="Start container"
+              >
+                <Play className="action-icon" />
+              </button>
+            )}
             <button
-              onClick={() => handleAction('stop')}
+              onClick={() => handleAction('restart')}
               disabled={isLoading}
-              className="action-button stop"
-              title="Stop container"
+              className="action-button restart"
+              title="Restart container"
             >
-              <Square className="action-icon" />
+              <RotateCcw className="action-icon" />
             </button>
-          ) : (
             <button
-              onClick={() => handleAction('start')}
+              onClick={() => handleAction('remove')}
               disabled={isLoading}
-              className="action-button start"
-              title="Start container"
+              className="action-button remove"
+              title="Remove container"
             >
-              <Play className="action-icon" />
+              <Trash2 className="action-icon" />
             </button>
-          )}
-          <button
-            onClick={() => handleAction('restart')}
-            disabled={isLoading}
-            className="action-button restart"
-            title="Restart container"
-          >
-            <RotateCcw className="action-icon" />
-          </button>
-          <button
-            onClick={() => handleAction('remove')}
-            disabled={isLoading}
-            className="action-button remove"
-            title="Remove container"
-          >
-            <Trash2 className="action-icon" />
-          </button>
-        </div>
-      </td>
-    </tr>
+          </div>
+        </td>
+      </tr>
+      
+      <DeleteContainerModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleRemove}
+        containerName={container.name}
+        isLoading={isLoading}
+      />
+    </>
   );
 };
 
@@ -610,9 +672,9 @@ const ContainerList: React.FC = () => {
               </label>
             </div>
           </div>
-          <button onClick={loadContainers} className="refresh-button">
-            <RefreshCw className="refresh-icon" />
-          </button>
+          <HeaderButton onClick={loadContainers} title="Refresh containers">
+            <RefreshCw className="icon" /> Refresh
+          </HeaderButton>
         </div>
       </div>
       

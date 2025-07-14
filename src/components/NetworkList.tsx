@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NetworkInfo } from '../types/docker';
+import DeleteNetworkModal from './DeleteNetworkModal';
+import HeaderButton from './HeaderButton';
 import { 
   Trash2, 
   Settings, 
@@ -20,36 +22,20 @@ interface NetworkRowProps {
   network: NetworkInfo;
   isSelected: boolean;
   onToggleSelection: () => void;
-  onUpdate: () => void;
+  onDeleteRequest: (network: NetworkInfo) => void;
   visibleColumns: ColumnConfig[];
   allColumns: ColumnConfig[];
 }
 
-const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onUpdate, allColumns }) => {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleRemove = async () => {
+const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSelection, onDeleteRequest, allColumns }) => {
+  const handleDeleteClick = () => {
     // Prevent removal of system networks
     if (['bridge', 'host', 'none'].includes(network.name)) {
       alert('Cannot remove system networks (bridge, host, none)');
       return;
     }
 
-    if (!confirm(`Are you sure you want to remove network ${network.name}?`)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await invoke<string>('remove_network', { networkId: network.id });
-      console.log(result);
-      onUpdate();
-    } catch (error) {
-      console.error('Failed to remove network:', error);
-      alert(`Failed to remove network: ${error}`);
-    } finally {
-      setIsLoading(false);
-    }
+    onDeleteRequest(network);
   };
 
   const isSystemNetwork = ['bridge', 'host', 'none'].includes(network.name);
@@ -137,8 +123,8 @@ const NetworkRow: React.FC<NetworkRowProps> = ({ network, isSelected, onToggleSe
             <Copy className="icon" />
           </button>
           <button
-            onClick={handleRemove}
-            disabled={isLoading || isSystemNetwork}
+            onClick={handleDeleteClick}
+            disabled={isSystemNetwork}
             className="action-button remove"
             title={isSystemNetwork ? "Cannot remove system networks" : "Remove network"}
           >
@@ -157,6 +143,9 @@ const NetworkList: React.FC = () => {
   const [selectedNetworks, setSelectedNetworks] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [networkToDelete, setNetworkToDelete] = useState<NetworkInfo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [columns, setColumns] = useState<ColumnConfig[]>([
     { id: 'name', label: 'Name', visible: true, className: 'name-col' },
@@ -188,6 +177,47 @@ const NetworkList: React.FC = () => {
   useEffect(() => {
     loadNetworks();
   }, []);
+
+  const handleDeleteRequest = (network: NetworkInfo) => {
+    setNetworkToDelete(network);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!networkToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await invoke<string>('remove_network', { networkId: networkToDelete.id });
+      console.log('Network removal result:', result);
+      alert(`Network "${networkToDelete.name}" removed successfully!`);
+      setShowDeleteModal(false);
+      setNetworkToDelete(null);
+      await loadNetworks();
+    } catch (error) {
+      console.error('Failed to remove network:', error);
+      const errorMessage = error as string;
+      
+      let displayMessage = `Failed to remove network "${networkToDelete.name}": ${errorMessage}`;
+      
+      if (errorMessage.includes('in use') || errorMessage.includes('has active endpoints')) {
+        displayMessage += '\n\nTip: This network is being used by running containers. Stop and disconnect containers from this network first.';
+      } else if (errorMessage.includes('permission denied') || errorMessage.includes('access denied')) {
+        displayMessage += '\n\nTip: Make sure Docker is running and you have permission to manage Docker networks.';
+      } else if (errorMessage.includes('connect') || errorMessage.includes('socket')) {
+        displayMessage += '\n\nTip: Make sure Docker Desktop is running and accessible.';
+      }
+      
+      alert(displayMessage);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setNetworkToDelete(null);
+  };
 
   // Close column selector when clicking outside
   useEffect(() => {
@@ -324,12 +354,12 @@ const NetworkList: React.FC = () => {
             </div>
           </div>
           <div className="header-actions">
-            <button onClick={loadNetworks} className="refresh-button">
+            <HeaderButton onClick={loadNetworks} title="Refresh networks">
               <RefreshCw className="icon" /> Refresh
-            </button>
-            <button className="create-button">
+            </HeaderButton>
+            <HeaderButton onClick={() => {}} title="Create network">
               <Plus className="icon" /> Create
-            </button>
+            </HeaderButton>
           </div>
         </div>
       </div>
@@ -383,7 +413,7 @@ const NetworkList: React.FC = () => {
                   network={network}
                   isSelected={selectedNetworks.has(network.id)}
                   onToggleSelection={() => toggleNetworkSelection(network.id)}
-                  onUpdate={loadNetworks}
+                  onDeleteRequest={handleDeleteRequest}
                   visibleColumns={visibleColumns}
                   allColumns={columns}
                 />
@@ -392,6 +422,14 @@ const NetworkList: React.FC = () => {
           </tbody>
         </table>
       </div>
+      
+      <DeleteNetworkModal
+        isOpen={showDeleteModal}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        networkName={networkToDelete?.name || ''}
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

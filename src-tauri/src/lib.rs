@@ -412,15 +412,29 @@ async fn create_volume(volume_name: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn remove_volume(volume_name: String) -> Result<String, String> {
+    println!("Attempting to remove volume: {}", volume_name);
+    
     let docker = Docker::connect_with_socket_defaults()
-        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+        .map_err(|e| {
+            let error_msg = format!("Failed to connect to Docker: {}", e);
+            println!("Docker connection error: {}", error_msg);
+            error_msg
+        })?;
 
+    println!("Connected to Docker, removing volume: {}", volume_name);
+    
     docker
         .remove_volume(&volume_name, None)
         .await
-        .map_err(|e| format!("Failed to remove volume: {}", e))?;
+        .map_err(|e| {
+            let error_msg = format!("Failed to remove volume '{}': {}", volume_name, e);
+            println!("Volume removal error: {}", error_msg);
+            error_msg
+        })?;
 
-    Ok(format!("Volume {} removed successfully", volume_name))
+    let success_msg = format!("Volume {} removed successfully", volume_name);
+    println!("{}", success_msg);
+    Ok(success_msg)
 }
 
 #[tauri::command]

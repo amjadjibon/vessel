@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ImageInfo } from '../types/docker';
+import DeleteImageModal from './DeleteImageModal';
+import HeaderButton from './HeaderButton';
 import { 
   Trash2, 
   Settings, 
@@ -25,17 +27,15 @@ interface ImageRowProps {
 
 const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelection, onUpdate, allColumns }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const handleRemove = async () => {
-    if (!confirm(`Are you sure you want to remove image ${getDisplayName()}?`)) {
-      return;
-    }
-
     setIsLoading(true);
     try {
       const result = await invoke<string>('remove_image', { imageId: image.id });
-      console.log(result);
-      onUpdate();
+      console.log('Image removal result:', result);
+      alert(`Image "${getDisplayName()}" removed successfully!`);
+      await onUpdate();
     } catch (error) {
       console.error('Failed to remove image:', error);
       const errorMessage = error as string;
@@ -47,19 +47,42 @@ const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelectio
         if (forceRemove) {
           try {
             const forceResult = await invoke<string>('force_remove_image', { imageId: image.id });
-            console.log(forceResult);
-            onUpdate();
+            console.log('Force removal result:', forceResult);
+            alert(`Image "${getDisplayName()}" force removed successfully!`);
+            await onUpdate();
           } catch (forceError) {
             console.error('Failed to force remove image:', forceError);
-            alert(`Failed to force remove image: ${forceError}`);
+            const forceErrorMessage = forceError as string;
+            let displayMessage = `Failed to force remove image "${getDisplayName()}": ${forceErrorMessage}`;
+            
+            if (forceErrorMessage.includes('permission denied') || forceErrorMessage.includes('access denied')) {
+              displayMessage += '\n\nTip: Make sure Docker is running and you have permission to manage Docker images.';
+            } else if (forceErrorMessage.includes('connect') || forceErrorMessage.includes('socket')) {
+              displayMessage += '\n\nTip: Make sure Docker Desktop is running and accessible.';
+            }
+            
+            alert(displayMessage);
           }
         }
       } else {
-        alert(`Failed to remove image: ${errorMessage}`);
+        let displayMessage = `Failed to remove image "${getDisplayName()}": ${errorMessage}`;
+        
+        if (errorMessage.includes('permission denied') || errorMessage.includes('access denied')) {
+          displayMessage += '\n\nTip: Make sure Docker is running and you have permission to manage Docker images.';
+        } else if (errorMessage.includes('connect') || errorMessage.includes('socket')) {
+          displayMessage += '\n\nTip: Make sure Docker Desktop is running and accessible.';
+        }
+        
+        alert(displayMessage);
       }
     } finally {
       setIsLoading(false);
+      setShowDeleteModal(false);
     }
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
   };
 
   const getDisplayName = () => {
@@ -127,40 +150,50 @@ const ImageRow: React.FC<ImageRowProps> = ({ image, isSelected, onToggleSelectio
   };
 
   return (
-    <tr className={`image-row ${isDangling ? 'dangling' : ''}`}>
-      <td className="checkbox-col">
-        <input 
-          type="checkbox" 
-          checked={isSelected}
-          onChange={onToggleSelection}
-        />
-      </td>
-      <td className="status-col">
-        {getStatusIcon()}
-      </td>
-      {/* Always show Tag first */}
-      <td className="tag-col">
-        {getColumnValue('tag')}
-      </td>
-      {/* Then show configurable columns */}
-      {allColumns.filter(column => column.id !== 'tag' && column.visible).map(column => (
-        <td key={column.id} className={column.className || `${column.id}-col`}>
-          {getColumnValue(column.id)}
+    <>
+      <tr className={`image-row ${isDangling ? 'dangling' : ''}`}>
+        <td className="checkbox-col">
+          <input 
+            type="checkbox" 
+            checked={isSelected}
+            onChange={onToggleSelection}
+          />
         </td>
-      ))}
-      <td className="actions-col">
-        <div className="action-buttons">
-          <button
-            onClick={handleRemove}
-            disabled={isLoading}
-            className="action-button remove"
-            title="Remove image"
-          >
-            <Trash2 className="action-icon" />
-          </button>
-        </div>
-      </td>
-    </tr>
+        <td className="status-col">
+          {getStatusIcon()}
+        </td>
+        {/* Always show Tag first */}
+        <td className="tag-col">
+          {getColumnValue('tag')}
+        </td>
+        {/* Then show configurable columns */}
+        {allColumns.filter(column => column.id !== 'tag' && column.visible).map(column => (
+          <td key={column.id} className={column.className || `${column.id}-col`}>
+            {getColumnValue(column.id)}
+          </td>
+        ))}
+        <td className="actions-col">
+          <div className="action-buttons">
+            <button
+              onClick={handleDeleteClick}
+              disabled={isLoading}
+              className="action-button remove"
+              title="Remove image"
+            >
+              <Trash2 className="action-icon" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      
+      <DeleteImageModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleRemove}
+        imageName={getDisplayName()}
+        isLoading={isLoading}
+      />
+    </>
   );
 };
 
@@ -354,9 +387,9 @@ const ImageList: React.FC = () => {
               )}
             </div>
           </div>
-          <button onClick={loadImages} className="refresh-button">
-            <RefreshCw className="refresh-icon" />
-          </button>
+          <HeaderButton onClick={loadImages} title="Refresh images">
+            <RefreshCw className="icon" /> Refresh
+          </HeaderButton>
         </div>
       </div>
       
