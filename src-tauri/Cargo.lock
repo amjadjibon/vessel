@@ -4434,6 +4434,7 @@ version = "0.1.0"
 dependencies = [
  "bollard",
  "futures-util",
+ "regex",
  "serde",
  "serde_json",
  "sysinfo",

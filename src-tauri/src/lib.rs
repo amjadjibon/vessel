@@ -11,6 +11,14 @@ use sysinfo::System;
 // use tokio::time::{timeout, Duration};
 use futures_util::StreamExt;
 use tauri::Emitter;
+use regex::Regex;
+
+// Function to strip ANSI escape sequences
+fn strip_ansi_codes(text: &str) -> String {
+    // Regex to match ANSI escape sequences
+    let ansi_regex = Regex::new(r"\x1B\[[0-?]*[ -/]*[@-~]").unwrap();
+    ansi_regex.replace_all(text, "").to_string()
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -1078,6 +1086,101 @@ async fn inspect_container(container_id: String) -> Result<serde_json::Value, St
         .map_err(|e| format!("Failed to serialize inspect data: {}", e))
 }
 
+#[tauri::command]
+async fn exec_container_command(
+    container_id: String, 
+    command: Vec<String>,
+    app_handle: tauri::AppHandle
+) -> Result<String, String> {
+    use bollard::exec::{CreateExecOptions, StartExecResults};
+    
+    let docker = Docker::connect_with_socket_defaults()
+        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+
+    // Build a shell command that includes the prompt and shows the command
+    let shell_command = format!("echo 'root@container:~$ {}' && {}", command.join(" "), command.join(" "));
+    
+    // Create exec instance with simplified environment (no colors)
+    let mut env_vars = Vec::new();
+    env_vars.push("LANG=C.UTF-8".to_string());
+    env_vars.push("LC_ALL=C.UTF-8".to_string());
+    env_vars.push("TERM=dumb".to_string()); // Use dumb terminal to disable colors
+    env_vars.push("NO_COLOR=1".to_string()); // Disable colors
+    env_vars.push("COLORTERM=".to_string()); // Clear color terminal
+    
+    let exec_options = CreateExecOptions {
+        attach_stdout: Some(true),
+        attach_stderr: Some(true),
+        attach_stdin: Some(false),
+        tty: Some(false), // Disable TTY to prevent color codes
+        env: Some(env_vars),
+        cmd: Some(vec!["/bin/sh".to_string(), "-c".to_string(), shell_command]),
+        ..Default::default()
+    };
+
+    let exec_instance = docker
+        .create_exec(&container_id, exec_options)
+        .await
+        .map_err(|e| format!("Failed to create exec instance: {}", e))?;
+
+    let exec_id = exec_instance.id.clone();
+    let exec_id_clone = exec_id.clone();
+    let container_id_clone = container_id.clone();
+    let app_handle_clone = app_handle.clone();
+
+    // Start exec and stream output
+    tokio::spawn(async move {
+        match docker.start_exec(&exec_id_clone, None).await {
+            Ok(StartExecResults::Attached { mut output, .. }) => {
+                while let Some(msg) = output.next().await {
+                    match msg {
+                        Ok(log_output) => {
+                            let bytes = log_output.into_bytes();
+                            
+                            // Properly handle Unicode by using from_utf8 and preserving original encoding
+                            let mut output_str = match String::from_utf8(bytes.to_vec()) {
+                                Ok(s) => s,
+                                Err(_) => {
+                                    // If UTF-8 conversion fails, use lossy conversion but preserve as much as possible
+                                    String::from_utf8_lossy(&bytes).to_string()
+                                }
+                            };
+                            
+                            // Remove ANSI escape sequences and color codes
+                            output_str = strip_ansi_codes(&output_str);
+                            
+                            // Emit the cleaned output to the frontend
+                            if let Err(e) = app_handle_clone.emit(&format!("exec-output-{}", container_id_clone), output_str) {
+                                eprintln!("Failed to emit exec output: {}", e);
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error reading exec output: {}", e);
+                            let _ = app_handle_clone.emit(&format!("exec-error-{}", container_id_clone), format!("Exec error: {}", e));
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(StartExecResults::Detached) => {
+                let _ = app_handle_clone.emit(&format!("exec-ended-{}", container_id_clone), "Exec session detached");
+            }
+            Err(e) => {
+                let _ = app_handle_clone.emit(&format!("exec-error-{}", container_id_clone), format!("Failed to start exec: {}", e));
+            }
+        }
+    });
+
+    Ok(format!("Exec session started with ID: {}", exec_id))
+}
+
+#[tauri::command]
+async fn start_container_shell(_container_id: String, _app_handle: tauri::AppHandle) -> Result<String, String> {
+    // Just return success - don't execute any initial command
+    Ok("Terminal session ready".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1089,7 +1192,8 @@ pub fn run() {
             list_volumes, create_volume, remove_volume, get_volume_size,
             list_networks, remove_network,
             execute_command, get_current_directory, get_home_directory, set_working_directory, change_directory, execute_docker_command,
-            get_system_stats, get_docker_system_info, get_container_stats, get_container_logs, start_log_stream, stop_log_stream, inspect_container
+            get_system_stats, get_docker_system_info, get_container_stats, get_container_logs, start_log_stream, stop_log_stream, inspect_container,
+            exec_container_command, start_container_shell
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

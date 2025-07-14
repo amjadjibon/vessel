@@ -26,3 +26,4 @@ bollard = "0.17"
 tokio = { version = "1", features = ["full"] }
 sysinfo = "0.30"
 futures-util = "0.3"
+regex = "1.0"

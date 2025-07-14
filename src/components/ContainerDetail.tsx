@@ -15,7 +15,9 @@ import {
   ArrowDown,
   Pause,
   PlayCircle,
-  ChevronDown
+  ChevronDown,
+  Terminal,
+  X
 } from 'lucide-react';
 
 interface ContainerDetailProps {
@@ -41,6 +43,15 @@ const ContainerDetail: React.FC<ContainerDetailProps> = ({ containerId, onBack }
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [terminalOutput, setTerminalOutput] = useState<string>('');
+  const [currentCommand, setCurrentCommand] = useState<string>('');
+  const [isTerminalConnected, setIsTerminalConnected] = useState<boolean>(false);
+  const [execLoading, setExecLoading] = useState<boolean>(false);
+  const [terminalHistory, setTerminalHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [selectedShell, setSelectedShell] = useState<string>('/bin/bash');
+  const [showDebugBanner, setShowDebugBanner] = useState<boolean>(true);
+  const terminalRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadContainerDetails();
@@ -92,6 +103,46 @@ const ContainerDetail: React.FC<ContainerDetailProps> = ({ containerId, onBack }
       }
     };
   }, [containerId, autoScroll, isStreaming]);
+
+  useEffect(() => {
+    // Set up terminal/exec event listeners
+    let execOutputUnlisten: any;
+    let execErrorUnlisten: any;
+    let execEndedUnlisten: any;
+
+    const setupExecListeners = async () => {
+      // Listen for exec output events
+      execOutputUnlisten = await listen(`exec-output-${containerId}`, (event) => {
+        const output = event.payload as string;
+        setTerminalOutput(prev => prev + output);
+        // Auto-scroll terminal to bottom
+        setTimeout(() => scrollTerminalToBottom(), 10);
+      });
+
+      // Listen for exec error events
+      execErrorUnlisten = await listen(`exec-error-${containerId}`, (event) => {
+        console.error('Exec error:', event.payload);
+        setTerminalOutput(prev => prev + `\n${event.payload as string}\n`);
+        setIsTerminalConnected(false);
+      });
+
+      // Listen for exec ended events
+      execEndedUnlisten = await listen(`exec-ended-${containerId}`, (event) => {
+        console.log('Exec ended:', event.payload);
+        setTerminalOutput(prev => prev + `\n${event.payload as string}\n`);
+        setIsTerminalConnected(false);
+      });
+    };
+
+    setupExecListeners();
+
+    // Cleanup listeners when component unmounts or containerId changes
+    return () => {
+      if (execOutputUnlisten) execOutputUnlisten();
+      if (execErrorUnlisten) execErrorUnlisten();
+      if (execEndedUnlisten) execEndedUnlisten();
+    };
+  }, [containerId]);
 
   const loadContainerDetails = async () => {
     try {
@@ -335,6 +386,110 @@ Try refreshing or check the container status.`;
     }
   };
 
+  const scrollTerminalToBottom = () => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  };
+
+  const startTerminalSession = async () => {
+    try {
+      setExecLoading(true);
+      setTerminalOutput('');
+      console.log('Starting terminal session for container:', containerId);
+      
+      // Add welcome message
+      setTerminalOutput('Connecting to container...\n\n');
+      
+      const result = await invoke<string>('start_container_shell', { 
+        containerId: containerId 
+      });
+      
+      console.log('Terminal session started:', result);
+      setIsTerminalConnected(true);
+      setTerminalOutput('Connected to container. Ready for commands.\n\n');
+    } catch (err) {
+      console.error('Failed to start terminal session:', err);
+      setTerminalOutput(prev => prev + `Error: ${err}\n\nThis could happen if:\n- The container is not running\n- No shell is available in the container\n- Permission issues\n\nTry starting the container first.\n\n`);
+    } finally {
+      setExecLoading(false);
+    }
+  };
+
+  const executeCommand = async (command: string) => {
+    if (!command.trim() || !isTerminalConnected) return;
+
+    try {
+      // Add command to history
+      setTerminalHistory(prev => [...prev, command]);
+      setHistoryIndex(-1);
+      
+      // Handle built-in commands locally
+      const cmd = command.trim().toLowerCase();
+      
+      if (cmd === 'clear' || cmd === 'cls') {
+        setTerminalOutput('');
+        setCurrentCommand('');
+        return;
+      }
+      
+      if (cmd === 'exit' || cmd === 'quit') {
+        setTerminalOutput(prev => prev + `${command}\nConnection closed.\n`);
+        setIsTerminalConnected(false);
+        setCurrentCommand('');
+        return;
+      }
+      
+      // Handle empty command
+      if (cmd === '') {
+        setCurrentCommand('');
+        return;
+      }
+      
+      // Parse command into array and execute
+      const commandParts = command.trim().split(/\s+/);
+      
+      await invoke('exec_container_command', {
+        containerId: containerId,
+        command: commandParts
+      });
+      
+      setCurrentCommand('');
+    } catch (err) {
+      console.error('Failed to execute command:', err);
+      setTerminalOutput(prev => prev + `Error executing command: ${err}\n`);
+    }
+  };
+
+  const handleTerminalKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      executeCommand(currentCommand);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (terminalHistory.length > 0) {
+        const newIndex = historyIndex + 1;
+        if (newIndex < terminalHistory.length) {
+          setHistoryIndex(newIndex);
+          setCurrentCommand(terminalHistory[terminalHistory.length - 1 - newIndex]);
+        }
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setCurrentCommand(terminalHistory[terminalHistory.length - 1 - newIndex]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setCurrentCommand('');
+      }
+    }
+  };
+
+  const clearTerminal = () => {
+    setTerminalOutput('');
+  };
+
   const handleContainerAction = async (action: string) => {
     if (!container) return;
     
@@ -503,7 +658,127 @@ Try refreshing or check the container status.`;
       case 'bindMounts':
         return <div className="tab-content">Bind mounts information will be displayed here</div>;
       case 'exec':
-        return <div className="tab-content">Terminal/exec interface will be displayed here</div>;
+        return (
+          <div className="exec-container">
+            {showDebugBanner && (
+              <div className="docker-debug-banner">
+                <Terminal className="debug-icon" />
+                <div className="debug-text">
+                  Docker Debug brings the tools you need to debug your container with one click.
+                  Requires a paid Docker subscription. <span className="debug-link">Learn more.</span>
+                </div>
+                <button 
+                  className="close-banner"
+                  onClick={() => setShowDebugBanner(false)}
+                  title="Close banner"
+                >
+                  <X />
+                </button>
+              </div>
+            )}
+            
+            <div className="exec-toolbar">
+              <div className="exec-info">
+                <div className="exec-status">
+                  Terminal session for {container?.name || containerId}
+                </div>
+                <div className="exec-connection-status">
+                  <div className={`connection-indicator ${isTerminalConnected ? '' : 'disconnected'}`}></div>
+                  {isTerminalConnected ? 'Connected' : 'Disconnected'}
+                </div>
+              </div>
+              
+              <div className="exec-actions">
+                <select 
+                  className="shell-selector"
+                  value={selectedShell}
+                  onChange={(e) => setSelectedShell(e.target.value)}
+                  disabled={isTerminalConnected}
+                >
+                  <option value="/bin/bash">bash</option>
+                  <option value="/bin/sh">sh</option>
+                  <option value="/bin/zsh">zsh</option>
+                  <option value="/bin/fish">fish</option>
+                </select>
+                
+                <button 
+                  className="icon-button" 
+                  title="Clear terminal"
+                  onClick={clearTerminal}
+                >
+                  <RefreshCw className="icon" />
+                </button>
+                
+                <button 
+                  className="icon-button" 
+                  title="Copy terminal output"
+                  onClick={() => {
+                    navigator.clipboard.writeText(terminalOutput);
+                    alert('Terminal output copied to clipboard!');
+                  }}
+                >
+                  <Copy className="icon" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="terminal" ref={terminalRef}>
+              {execLoading ? (
+                <div className="exec-loading">
+                  <div className="loading-spinner"></div>
+                  <span>Connecting to container...</span>
+                </div>
+              ) : (
+                <>
+                  {!isTerminalConnected && !terminalOutput && (
+                    <div className="terminal-welcome">
+                      Welcome to Container Terminal
+                      <br />
+                      <br />
+                      Click "Connect" to start a terminal session in the container.
+                      <br />
+                      <br />
+                      <button 
+                        style={{
+                          background: '#007acc',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 16px',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={startTerminalSession}
+                        disabled={execLoading}
+                      >
+                        Connect to Container
+                      </button>
+                    </div>
+                  )}
+                  
+                  <div className="terminal-output">
+                    {terminalOutput}
+                  </div>
+                  
+                  {isTerminalConnected && (
+                    <div className="terminal-input-line">
+                      <span className="terminal-prompt">root@container:~$</span>
+                      <input
+                        type="text"
+                        className="terminal-input"
+                        value={currentCommand}
+                        onChange={(e) => setCurrentCommand(e.target.value)}
+                        onKeyDown={handleTerminalKeyDown}
+                        placeholder="Type a command and press Enter..."
+                        autoFocus
+                      />
+                      <span className="terminal-cursor"></span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
       case 'files':
         return <div className="tab-content">Container file browser will be displayed here</div>;
       case 'stats':
